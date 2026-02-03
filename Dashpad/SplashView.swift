@@ -1,15 +1,14 @@
 import SwiftUI
-import SwiftData
 
 struct SplashView: View {
-    @Query(filter: #Predicate<DashItem> { $0.isComplete }) private var completedItems: [DashItem]
+    @Environment(DashStore.self) private var store
     
     @State private var showLogo = false
     @State private var showCount = false
     @Binding var isFinished: Bool
     
     private var funMessage: String {
-        let count = completedItems.count
+        let count = store.completedCount
         switch count {
         case 0:
             return "Ready to crush it"

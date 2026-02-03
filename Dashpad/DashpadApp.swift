@@ -1,9 +1,9 @@
 import SwiftUI
-import SwiftData
 
 @main
 struct DashpadApp: App {
     @State private var splashFinished = false
+    @State private var store = DashStore()
     
     var body: some Scene {
         WindowGroup {
@@ -18,7 +18,7 @@ struct DashpadApp: App {
                         .transition(.opacity)
                 }
             }
+            .environment(store)
         }
-        .modelContainer(for: DashItem.self)
     }
 }

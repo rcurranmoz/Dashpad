@@ -1,11 +1,9 @@
 import SwiftUI
-import SwiftData
 
 // MARK: - Design System
 
 enum Dash {
     enum Colors {
-        // Richer, warmer dark palette
         static let background = Color(hex: "09090B")
         static let backgroundGradientTop = Color(hex: "13121A")
         static let backgroundGradientBottom = Color(hex: "09090B")
@@ -14,8 +12,7 @@ enum Dash {
         static let cardBackgroundElevated = Color(hex: "1F1F23")
         static let cardBorder = Color(hex: "27272A")
         
-        // Vibrant accent palette
-        static let accent = Color(hex: "8B5CF6") // Purple
+        static let accent = Color(hex: "8B5CF6")
         static let accentLight = Color(hex: "A78BFA")
         static let accentGlow = Color(hex: "8B5CF6").opacity(0.4)
         static let accentGradientStart = Color(hex: "8B5CF6")
@@ -38,7 +35,6 @@ enum Dash {
         
         static let divider = Color(hex: "3F3F46")
         
-        // Tag colors
         static func tagColor(_ hex: String) -> Color {
             Color(hex: hex)
         }
@@ -98,8 +94,7 @@ extension Color {
 // MARK: - Main View
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \DashItem.createdAt, order: .reverse) private var items: [DashItem]
+    @Environment(DashStore.self) private var store
     
     @State private var newItemTitle = ""
     @State private var newItemTags: [String] = []
@@ -107,28 +102,25 @@ struct ContentView: View {
     @State private var selectedTagFilter: String? = nil
     @State private var editingItem: DashItem? = nil
     @State private var showBackburner = false
+    @AppStorage("sortMode") private var sortMode: SortMode = .newest
     @FocusState private var isInputFocused: Bool
     
-    // 14 days ago
     private var backburnerThreshold: Date {
         Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
     }
     
-    // Items sitting for 14+ days (not complete)
     var backburnerItems: [DashItem] {
-        items.filter { item in
+        store.items.filter { item in
             !item.isComplete && item.createdAt < backburnerThreshold
         }
     }
     
-    // Active items (incomplete and not on backburner)
     var activeItems: [DashItem] {
-        items.filter { item in
+        store.items.filter { item in
             !item.isComplete && item.createdAt >= backburnerThreshold
         }
     }
     
-    // All unique tags from active incomplete items only
     var allTags: [String] {
         let incompleteTags = activeItems.flatMap { $0.tags }
         return Array(Set(incompleteTags)).sorted()
@@ -139,24 +131,9 @@ struct ContentView: View {
         if let tag = selectedTagFilter {
             filtered = filtered.filter { $0.tags.contains(tag) }
         }
-        return filtered
+        return filtered.sorted(by: sortMode)
     }
     
-    var overdueItems: [DashItem] {
-        incompleteItems.filter { item in
-            guard let due = item.dueDate else { return false }
-            return due < Date()
-        }
-    }
-    
-    var upcomingItems: [DashItem] {
-        incompleteItems.filter { item in
-            guard let due = item.dueDate else { return true }
-            return due >= Date()
-        }
-    }
-    
-    // Suggested tags based on input
     var suggestedTags: [String] {
         guard !newItemTitle.isEmpty else { return [] }
         return TagPredictor.suggestTags(for: newItemTitle, existingUserTags: allTags)
@@ -165,29 +142,24 @@ struct ContentView: View {
     
     var body: some View {
         ZStack {
-            // Rich gradient background
             backgroundView
             
             VStack(spacing: 0) {
-                // Header
                 header
                     .padding(.horizontal, Dash.Spacing.xl)
                     .padding(.top, Dash.Spacing.md)
                     .padding(.bottom, Dash.Spacing.sm)
                 
-                // Tag filter bar
                 if !allTags.isEmpty {
                     tagFilterBar
                         .padding(.bottom, Dash.Spacing.md)
                 }
                 
-                // Content
                 contentList
                 
                 Spacer(minLength: 0)
             }
             
-            // Input bar
             VStack {
                 Spacer()
                 inputBar
@@ -201,7 +173,6 @@ struct ContentView: View {
             BackburnerView(items: backburnerItems, onRevive: reviveItem, onLetGo: deleteItem)
         }
         .onChange(of: allTags) { _, newTags in
-            // Clear filter if selected tag no longer exists
             if let selected = selectedTagFilter, !newTags.contains(selected) {
                 selectedTagFilter = nil
             }
@@ -209,14 +180,13 @@ struct ContentView: View {
     }
     
     private func reviveItem(_ item: DashItem) {
-        // Reset createdAt to now, bringing it back to active list
-        item.createdAt = Date()
+        store.revive(item)
         let impact = UIImpactFeedbackGenerator(style: .medium)
         impact.impactOccurred()
     }
     
     private func deleteItem(_ item: DashItem) {
-        modelContext.delete(item)
+        store.delete(item)
         let impact = UIImpactFeedbackGenerator(style: .light)
         impact.impactOccurred()
     }
@@ -226,60 +196,23 @@ struct ContentView: View {
     private var contentList: some View {
         ScrollView {
             LazyVStack(spacing: Dash.Spacing.md) {
-                // Overdue section
-                overdueSection
-                
-                // Main list
-                upcomingSection
+                ForEach(incompleteItems) { item in
+                    DashItemCard(item: item, onComplete: {
+                        completeItem(item)
+                    }, onEdit: {
+                        editingItem = item
+                    })
+                }
             }
             .padding(.horizontal, Dash.Spacing.xl)
+            .padding(.top, Dash.Spacing.sm)
             .padding(.bottom, 140)
         }
         .overlay {
-            // Empty state - centered on screen
             if incompleteItems.isEmpty {
                 emptyState
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .offset(y: -40) // Slightly above center to account for input bar
-            }
-        }
-    }
-    
-    // MARK: - Overdue Section
-    
-    private var overdueSection: some View {
-        Group {
-            if !overdueItems.isEmpty {
-                sectionHeader("Overdue", count: overdueItems.count, style: .overdue)
-                
-                ForEach(overdueItems) { item in
-                    DashItemCard(item: item, style: .overdue, onComplete: {
-                        completeItem(item)
-                    }, onEdit: {
-                        editingItem = item
-                    })
-                }
-                .padding(.bottom, Dash.Spacing.sm)
-            }
-        }
-    }
-    
-    // MARK: - Upcoming Section
-    
-    private var upcomingSection: some View {
-        Group {
-            if !upcomingItems.isEmpty {
-                if !overdueItems.isEmpty {
-                    sectionHeader("Upcoming", count: upcomingItems.count, style: .normal)
-                }
-                
-                ForEach(upcomingItems) { item in
-                    DashItemCard(item: item, style: .normal, onComplete: {
-                        completeItem(item)
-                    }, onEdit: {
-                        editingItem = item
-                    })
-                }
+                    .offset(y: -40)
             }
         }
     }
@@ -288,14 +221,12 @@ struct ContentView: View {
     
     private var backgroundView: some View {
         ZStack {
-            // Base gradient
             LinearGradient(
                 colors: [Dash.Colors.backgroundGradientTop, Dash.Colors.backgroundGradientBottom],
                 startPoint: .top,
                 endPoint: .bottom
             )
             
-            // Ambient glow orbs
             GeometryReader { geo in
                 Circle()
                     .fill(Dash.Colors.accent.opacity(0.08))
@@ -335,32 +266,63 @@ struct ContentView: View {
             
             Spacer()
             
-            // Backburner indicator - always visible
-            Button {
-                showBackburner = true
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(Dash.Colors.cardBackground)
-                        .frame(width: 40, height: 40)
-                        .overlay(
-                            Circle()
-                                .stroke(Dash.Colors.cardBorder, lineWidth: 1)
-                        )
-                    
-                    Text("🔥")
-                        .font(.system(size: 18))
-                    
-                    // Amber dot indicator - only show if there are backburner items
-                    if !backburnerItems.isEmpty {
+            HStack(spacing: Dash.Spacing.md) {
+                Menu {
+                    ForEach(SortMode.allCases) { mode in
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                sortMode = mode
+                            }
+                            let impact = UIImpactFeedbackGenerator(style: .light)
+                            impact.impactOccurred()
+                        } label: {
+                            Label(mode.rawValue, systemImage: mode.icon)
+                            if sortMode == mode {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                } label: {
+                    ZStack {
                         Circle()
-                            .fill(Color(hex: "F59E0B"))
-                            .frame(width: 10, height: 10)
+                            .fill(Dash.Colors.cardBackground)
+                            .frame(width: 40, height: 40)
                             .overlay(
                                 Circle()
-                                    .stroke(Dash.Colors.background, lineWidth: 2)
+                                    .stroke(Dash.Colors.cardBorder, lineWidth: 1)
                             )
-                            .offset(x: 12, y: -12)
+                        
+                        Image(systemName: sortMode.icon)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Dash.Colors.textSecondary)
+                    }
+                }
+                
+                Button {
+                    showBackburner = true
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Dash.Colors.cardBackground)
+                            .frame(width: 40, height: 40)
+                            .overlay(
+                                Circle()
+                                    .stroke(Dash.Colors.cardBorder, lineWidth: 1)
+                            )
+                        
+                        Text("🔥")
+                            .font(.system(size: 18))
+                        
+                        if !backburnerItems.isEmpty {
+                            Circle()
+                                .fill(Color(hex: "F59E0B"))
+                                .frame(width: 10, height: 10)
+                                .overlay(
+                                    Circle()
+                                        .stroke(Dash.Colors.background, lineWidth: 2)
+                                )
+                                .offset(x: 12, y: -12)
+                        }
                     }
                 }
             }
@@ -378,7 +340,6 @@ struct ContentView: View {
     private var tagFilterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Dash.Spacing.sm) {
-                // "All" pill
                 TagFilterPill(
                     label: "All",
                     color: Dash.Colors.accent,
@@ -391,7 +352,6 @@ struct ContentView: View {
                     impact.impactOccurred()
                 }
                 
-                // Tag pills
                 ForEach(allTags, id: \.self) { tag in
                     let tagColor = Color(hex: TagPredictor.color(for: tag))
                     
@@ -416,82 +376,6 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Stats Card
-    
-    private var statsCard: some View {
-        HStack(spacing: Dash.Spacing.lg) {
-            StatItem(
-                value: "\(incompleteItems.count)",
-                label: "Total",
-                color: Dash.Colors.accent
-            )
-            
-            Divider()
-                .frame(height: 32)
-                .background(Dash.Colors.divider)
-            
-            StatItem(
-                value: "\(overdueItems.count)",
-                label: "Overdue",
-                color: overdueItems.isEmpty ? Dash.Colors.textTertiary : Dash.Colors.overdue
-            )
-            
-            Divider()
-                .frame(height: 32)
-                .background(Dash.Colors.divider)
-            
-            StatItem(
-                value: "\(items.filter { $0.isComplete }.count)",
-                label: "Done",
-                color: Dash.Colors.success
-            )
-        }
-        .padding(.horizontal, Dash.Spacing.xl)
-        .padding(.vertical, Dash.Spacing.lg)
-        .background(
-            RoundedRectangle(cornerRadius: Dash.Radius.lg)
-                .fill(Dash.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Dash.Radius.lg)
-                        .stroke(Dash.Colors.cardBorder, lineWidth: 1)
-                )
-        )
-    }
-    
-    // MARK: - Section Header
-    
-    enum SectionStyle {
-        case normal, overdue
-    }
-    
-    private func sectionHeader(_ title: String, count: Int, style: SectionStyle) -> some View {
-        HStack(spacing: Dash.Spacing.sm) {
-            // Icon
-            Circle()
-                .fill(style == .overdue ? Dash.Colors.overdueGlow : Dash.Colors.accent.opacity(0.2))
-                .frame(width: 8, height: 8)
-            
-            Text(title)
-                .font(Dash.Typography.caption)
-                .foregroundStyle(style == .overdue ? Dash.Colors.overdue : Dash.Colors.textSecondary)
-                .textCase(.uppercase)
-                .tracking(1)
-            
-            Capsule()
-                .fill(style == .overdue ? Dash.Colors.overdueGlow : Dash.Colors.accent.opacity(0.15))
-                .frame(width: 24, height: 20)
-                .overlay(
-                    Text("\(count)")
-                        .font(Dash.Typography.micro)
-                        .foregroundStyle(style == .overdue ? Dash.Colors.overdue : Dash.Colors.accent)
-                )
-            
-            Spacer()
-        }
-        .padding(.top, Dash.Spacing.md)
-        .padding(.bottom, Dash.Spacing.xs)
-    }
-    
     // MARK: - Empty State
     
     private var emptyStateMessages: [(title: String, subtitle: String)] {
@@ -508,7 +392,6 @@ struct ContentView: View {
     }
     
     private var currentEmptyMessage: (title: String, subtitle: String) {
-        // Use the hour to rotate messages throughout the day
         let hour = Calendar.current.component(.hour, from: Date())
         let index = hour % emptyStateMessages.count
         return emptyStateMessages[index]
@@ -516,7 +399,6 @@ struct ContentView: View {
     
     private var emptyState: some View {
         VStack(spacing: Dash.Spacing.lg) {
-            // Subtle icon - just a soft circle with dash
             ZStack {
                 Circle()
                     .fill(Dash.Colors.cardBackground)
@@ -526,7 +408,6 @@ struct ContentView: View {
                             .stroke(Dash.Colors.cardBorder, lineWidth: 1)
                     )
                 
-                // Simple dash mark
                 RoundedRectangle(cornerRadius: 2)
                     .fill(Dash.Colors.textTertiary)
                     .frame(width: 20, height: 4)
@@ -554,7 +435,6 @@ struct ContentView: View {
     
     private var inputBar: some View {
         VStack(spacing: 0) {
-            // Gradient fade
             LinearGradient(
                 colors: [Dash.Colors.background.opacity(0), Dash.Colors.background],
                 startPoint: .top,
@@ -563,19 +443,15 @@ struct ContentView: View {
             .frame(height: 30)
             
             VStack(spacing: Dash.Spacing.sm) {
-                // Tag suggestions
                 if isInputActive && !suggestedTags.isEmpty {
                     tagSuggestionsBar
                 }
                 
-                // Selected tags for new item
                 if !newItemTags.isEmpty {
                     selectedTagsBar
                 }
                 
-                // Main input row
                 HStack(spacing: Dash.Spacing.md) {
-                    // Text field with icon
                     HStack(spacing: Dash.Spacing.md) {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .semibold))
@@ -600,7 +476,7 @@ struct ContentView: View {
                             .overlay(
                                 RoundedRectangle(cornerRadius: Dash.Radius.xl)
                                     .stroke(
-                                        isInputActive
+                                        isInputActive 
                                             ? LinearGradient(colors: [Dash.Colors.accent.opacity(0.6), Dash.Colors.accent.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing)
                                             : LinearGradient(colors: [Dash.Colors.cardBorder, Dash.Colors.cardBorder], startPoint: .top, endPoint: .bottom),
                                         lineWidth: 1
@@ -609,7 +485,6 @@ struct ContentView: View {
                             .shadow(color: isInputActive ? Dash.Colors.accentGlow.opacity(0.5) : .clear, radius: 16, y: 4)
                     )
                     
-                    // Send button - only show when there's text
                     if !newItemTitle.trimmingCharacters(in: .whitespaces).isEmpty {
                         Button {
                             addItem()
@@ -642,8 +517,6 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Tag Suggestions Bar
-    
     private var tagSuggestionsBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Dash.Spacing.sm) {
@@ -664,8 +537,6 @@ struct ContentView: View {
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
-    
-    // MARK: - Selected Tags Bar
     
     private var selectedTagsBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -688,9 +559,12 @@ struct ContentView: View {
         let trimmed = newItemTitle.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
         
+        let (date, cleanedTitle) = DateParser.parse(trimmed)
+        let finalTitle = cleanedTitle.isEmpty ? trimmed : cleanedTitle
+        
         withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-            let item = DashItem(title: trimmed, tags: newItemTags)
-            modelContext.insert(item)
+            let item = DashItem(title: finalTitle, dueDate: date, tags: newItemTags)
+            store.add(item)
             newItemTitle = ""
             newItemTags = []
         }
@@ -701,8 +575,188 @@ struct ContentView: View {
     
     private func completeItem(_ item: DashItem) {
         withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-            item.complete()
+            store.complete(item)
         }
+    }
+}
+
+// MARK: - Dash Item Card
+
+struct DashItemCard: View {
+    let item: DashItem
+    let onComplete: () -> Void
+    let onEdit: () -> Void
+    
+    @State private var isCompleting = false
+    @State private var showParticles = false
+    
+    private var isOverdue: Bool {
+        guard let due = item.dueDate else { return false }
+        return due < Date()
+    }
+    
+    // Minimal time label for top-right corner
+    private var miniTimeLabel: String? {
+        guard let due = item.dueDate else { return nil }
+        let calendar = Calendar.current
+        
+        if due < Date() {
+            return "overdue"
+        } else if calendar.isDateInToday(due) {
+            return due.formatted(date: .omitted, time: .shortened).lowercased()
+        } else if calendar.isDateInTomorrow(due) {
+            return "tomorrow"
+        } else {
+            // Check if within this week
+            let daysUntil = calendar.dateComponents([.day], from: Date(), to: due).day ?? 0
+            if daysUntil <= 6 {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "EEE"
+                return formatter.string(from: due)
+            } else {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "MMM d"
+                return formatter.string(from: due)
+            }
+        }
+    }
+    
+    private var miniTimeLabelColor: Color {
+        guard let due = item.dueDate else { return Dash.Colors.textTertiary }
+        let calendar = Calendar.current
+        
+        if due < Date() {
+            return Dash.Colors.overdue
+        } else if calendar.isDateInToday(due) {
+            return Color(hex: "F59E0B") // Orange
+        } else if calendar.isDateInTomorrow(due) {
+            return Color(hex: "FBBF24") // Yellow
+        } else {
+            return Dash.Colors.textTertiary
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: Dash.Spacing.md) {
+            // Checkbox
+            Button {
+                triggerCompletion()
+            } label: {
+                ZStack {
+                    if showParticles {
+                        ForEach(0..<6, id: \.self) { index in
+                            Circle()
+                                .fill(Dash.Colors.success)
+                                .frame(width: 4, height: 4)
+                                .offset(particleOffset(for: index))
+                                .opacity(showParticles ? 0 : 1)
+                                .animation(
+                                    .easeOut(duration: 0.4)
+                                    .delay(Double(index) * 0.02),
+                                    value: showParticles
+                                )
+                        }
+                    }
+                    
+                    Circle()
+                        .fill(isCompleting ? Dash.Colors.success : Color.clear)
+                        .frame(width: 22, height: 22)
+                        .overlay(
+                            Circle()
+                                .stroke(
+                                    isCompleting 
+                                        ? Dash.Colors.success
+                                        : (isOverdue ? Dash.Colors.overdue.opacity(0.5) : Dash.Colors.divider),
+                                    lineWidth: 1.5
+                                )
+                        )
+                        .scaleEffect(isCompleting ? 1.15 : 1.0)
+                    
+                    if isCompleting {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                    
+                    if isOverdue && !isCompleting {
+                        Circle()
+                            .fill(Dash.Colors.overdueGlow)
+                            .frame(width: 22, height: 22)
+                        
+                        Circle()
+                            .fill(Dash.Colors.overdue)
+                            .frame(width: 6, height: 6)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            
+            // Content
+            Button {
+                onEdit()
+            } label: {
+                Text(item.title)
+                    .font(Dash.Typography.body)
+                    .foregroundStyle(isCompleting ? Dash.Colors.textTertiary : Dash.Colors.textPrimary)
+                    .strikethrough(isCompleting, color: Dash.Colors.textTertiary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .disabled(isCompleting)
+            
+            // Minimal time label
+            if let label = miniTimeLabel {
+                Text(label)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(miniTimeLabelColor)
+                    .opacity(isCompleting ? 0.5 : 1)
+            }
+        }
+        .padding(Dash.Spacing.lg)
+        .background(
+            RoundedRectangle(cornerRadius: Dash.Radius.md)
+                .fill(Dash.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Dash.Radius.md)
+                        .stroke(
+                            isOverdue ? Dash.Colors.overdue.opacity(0.3) : Dash.Colors.cardBorder,
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: isOverdue ? Dash.Colors.overdueGlow.opacity(0.3) : .black.opacity(0.1), radius: 8, y: 2)
+        )
+        .opacity(isCompleting ? 0.7 : 1)
+    }
+    
+    private func triggerCompletion() {
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.impactOccurred()
+        
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+            isCompleting = true
+            showParticles = true
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            let notification = UINotificationFeedbackGenerator()
+            notification.notificationOccurred(.success)
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            onComplete()
+        }
+    }
+    
+    private func particleOffset(for index: Int) -> CGSize {
+        let angle = (Double(index) / 6.0) * 2 * Double.pi
+        let distance: Double = showParticles ? 18 : 0
+        return CGSize(
+            width: Foundation.cos(angle) * distance,
+            height: Foundation.sin(angle) * distance
+        )
     }
 }
 
@@ -802,232 +856,19 @@ struct SelectedTagChip: View {
     }
 }
 
-// MARK: - Stat Item
-
-struct StatItem: View {
-    let value: String
-    let label: String
-    let color: Color
-    
-    var body: some View {
-        VStack(spacing: Dash.Spacing.xs) {
-            Text(value)
-                .font(Dash.Typography.title)
-                .foregroundStyle(color)
-            
-            Text(label)
-                .font(Dash.Typography.micro)
-                .foregroundStyle(Dash.Colors.textTertiary)
-                .textCase(.uppercase)
-                .tracking(0.5)
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-// MARK: - Item Card
-
-struct DashItemCard: View {
-    let item: DashItem
-    let style: ContentView.SectionStyle
-    let onComplete: () -> Void
-    let onEdit: () -> Void
-    
-    @State private var isCompleting = false
-    @State private var showParticles = false
-    
-    private var isOverdue: Bool { style == .overdue }
-    
-    var body: some View {
-        HStack(spacing: Dash.Spacing.md) {
-            // Tappable checkbox with celebration
-            Button {
-                triggerCompletion()
-            } label: {
-                ZStack {
-                    // Particle burst
-                    if showParticles {
-                        ForEach(0..<6, id: \.self) { index in
-                            Circle()
-                                .fill(Dash.Colors.success)
-                                .frame(width: 4, height: 4)
-                                .offset(particleOffset(for: index))
-                                .opacity(showParticles ? 0 : 1)
-                                .animation(
-                                    .easeOut(duration: 0.4)
-                                    .delay(Double(index) * 0.02),
-                                    value: showParticles
-                                )
-                        }
-                    }
-                    
-                    // Outer ring / fill
-                    Circle()
-                        .fill(isCompleting ? Dash.Colors.success : Color.clear)
-                        .frame(width: 20, height: 20)
-                        .overlay(
-                            Circle()
-                                .stroke(
-                                    isCompleting
-                                        ? Dash.Colors.success
-                                        : (isOverdue ? Dash.Colors.overdue.opacity(0.5) : Dash.Colors.divider),
-                                    lineWidth: 1.5
-                                )
-                        )
-                        .scaleEffect(isCompleting ? 1.15 : 1.0)
-                    
-                    // Checkmark (shows on completion)
-                    if isCompleting {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white)
-                            .transition(.scale.combined(with: .opacity))
-                    }
-                    
-                    // Inner fill for overdue (when not completing)
-                    if isOverdue && !isCompleting {
-                        Circle()
-                            .fill(Dash.Colors.overdueGlow)
-                            .frame(width: 20, height: 20)
-                        
-                        Circle()
-                            .fill(Dash.Colors.overdue)
-                            .frame(width: 6, height: 6)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            
-            // Content - tappable for edit
-            Button {
-                onEdit()
-            } label: {
-                VStack(alignment: .leading, spacing: Dash.Spacing.xs) {
-                    Text(item.title)
-                        .font(Dash.Typography.body)
-                        .foregroundStyle(isCompleting ? Dash.Colors.textTertiary : Dash.Colors.textPrimary)
-                        .strikethrough(isCompleting, color: Dash.Colors.textTertiary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    
-                    if let dueDate = item.dueDate {
-                        HStack(spacing: Dash.Spacing.xs) {
-                            Image(systemName: isOverdue ? "exclamationmark.triangle.fill" : "calendar")
-                                .font(.system(size: 11, weight: .semibold))
-                            
-                            Text(formatDate(dueDate))
-                                .font(Dash.Typography.caption)
-                        }
-                        .foregroundStyle(isOverdue ? Dash.Colors.overdue : Dash.Colors.textSecondary)
-                        .padding(.horizontal, Dash.Spacing.sm)
-                        .padding(.vertical, Dash.Spacing.xs)
-                        .background(
-                            Capsule()
-                                .fill(isOverdue ? Dash.Colors.overdueGlow : Dash.Colors.accent.opacity(0.1))
-                        )
-                        .opacity(isCompleting ? 0.5 : 1)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-            .disabled(isCompleting)
-        }
-        .padding(Dash.Spacing.lg)
-        .background(
-            RoundedRectangle(cornerRadius: Dash.Radius.md)
-                .fill(Dash.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Dash.Radius.md)
-                        .stroke(
-                            isOverdue ? Dash.Colors.overdue.opacity(0.3) : Dash.Colors.cardBorder,
-                            lineWidth: 1
-                        )
-                )
-                .shadow(color: isOverdue ? Dash.Colors.overdueGlow.opacity(0.3) : .black.opacity(0.1), radius: 8, y: 2)
-        )
-        .opacity(isCompleting ? 0.7 : 1)
-    }
-    
-    private func triggerCompletion() {
-        // Haptic feedback
-        let impact = UIImpactFeedbackGenerator(style: .medium)
-        impact.impactOccurred()
-        
-        // Start animation
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-            isCompleting = true
-            showParticles = true
-        }
-        
-        // Success haptic after a beat
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            let notification = UINotificationFeedbackGenerator()
-            notification.notificationOccurred(.success)
-        }
-        
-        // Actually complete the item after animation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            onComplete()
-        }
-    }
-    
-    private func particleOffset(for index: Int) -> CGSize {
-        let angle = (Double(index) / 6.0) * 2 * Double.pi
-        let distance: Double = showParticles ? 18 : 0
-        return CGSize(
-            width: Foundation.cos(angle) * distance,
-            height: Foundation.sin(angle) * distance
-        )
-    }
-    
-    private func formatDate(_ date: Date) -> String {
-        let calendar = Calendar.current
-        
-        if calendar.isDateInToday(date) {
-            return "Today, " + date.formatted(date: .omitted, time: .shortened)
-        } else if calendar.isDateInTomorrow(date) {
-            return "Tomorrow, " + date.formatted(date: .omitted, time: .shortened)
-        } else if calendar.isDateInYesterday(date) {
-            return "Yesterday"
-        } else {
-            return date.formatted(.dateTime.month(.abbreviated).day())
-        }
-    }
-}
-
-// MARK: - Item Tag Badge
-
-struct ItemTagBadge: View {
-    let tag: String
-    
-    var tagColor: Color {
-        Color(hex: TagPredictor.color(for: tag))
-    }
-    
-    var body: some View {
-        Text(tag.capitalized)
-            .font(.system(size: 10, weight: .bold, design: .rounded))
-            .foregroundStyle(tagColor)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(
-                Capsule()
-                    .fill(tagColor.opacity(0.15))
-            )
-    }
-}
-
 // MARK: - Edit Item View
 
 struct EditItemView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
-    @Bindable var item: DashItem
+    @Environment(DashStore.self) private var store
+    
+    let item: DashItem
     let allTags: [String]
     
     @State private var title: String = ""
     @State private var tags: [String] = []
+    @State private var hasDueDate: Bool = false
+    @State private var dueDate: Date = Date()
     @State private var showDeleteConfirmation = false
     @FocusState private var isTitleFocused: Bool
     
@@ -1045,7 +886,6 @@ struct EditItemView: View {
                 
                 ScrollView {
                     VStack(spacing: Dash.Spacing.xl) {
-                        // Title field
                         VStack(alignment: .leading, spacing: Dash.Spacing.sm) {
                             Text("REMINDER")
                                 .font(Dash.Typography.micro)
@@ -1068,14 +908,55 @@ struct EditItemView: View {
                                 )
                         }
                         
-                        // Tags section
+                        // Due Date section
+                        VStack(alignment: .leading, spacing: Dash.Spacing.sm) {
+                            Text("DUE DATE")
+                                .font(Dash.Typography.micro)
+                                .foregroundStyle(Dash.Colors.textTertiary)
+                                .tracking(1)
+                            
+                            VStack(spacing: Dash.Spacing.md) {
+                                Toggle(isOn: $hasDueDate.animation(.spring(response: 0.3, dampingFraction: 0.8))) {
+                                    HStack(spacing: Dash.Spacing.md) {
+                                        Image(systemName: "calendar")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundStyle(hasDueDate ? Dash.Colors.accent : Dash.Colors.textTertiary)
+                                        
+                                        Text(hasDueDate ? "Due date set" : "No due date")
+                                            .font(Dash.Typography.body)
+                                            .foregroundStyle(Dash.Colors.textPrimary)
+                                    }
+                                }
+                                .tint(Dash.Colors.accent)
+                                
+                                if hasDueDate {
+                                    DatePicker(
+                                        "",
+                                        selection: $dueDate,
+                                        displayedComponents: [.date, .hourAndMinute]
+                                    )
+                                    .datePickerStyle(.graphical)
+                                    .tint(Dash.Colors.accent)
+                                    .colorScheme(.dark)
+                                }
+                            }
+                            .padding(Dash.Spacing.lg)
+                            .background(
+                                RoundedRectangle(cornerRadius: Dash.Radius.md)
+                                    .fill(Dash.Colors.cardBackground)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: Dash.Radius.md)
+                                            .stroke(Dash.Colors.cardBorder, lineWidth: 1)
+                                    )
+                            )
+                        }
+                        
                         VStack(alignment: .leading, spacing: Dash.Spacing.sm) {
                             Text("TAGS")
                                 .font(Dash.Typography.micro)
                                 .foregroundStyle(Dash.Colors.textTertiary)
                                 .tracking(1)
                             
-                            // Current tags
                             if !tags.isEmpty {
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     HStack(spacing: Dash.Spacing.sm) {
@@ -1090,7 +971,6 @@ struct EditItemView: View {
                                 }
                             }
                             
-                            // Suggested tags
                             if !suggestedTags.isEmpty {
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     HStack(spacing: Dash.Spacing.sm) {
@@ -1105,7 +985,6 @@ struct EditItemView: View {
                                 }
                             }
                             
-                            // All available tags
                             if !allTags.isEmpty {
                                 Text("All tags")
                                     .font(Dash.Typography.caption)
@@ -1146,7 +1025,6 @@ struct EditItemView: View {
                         
                         Spacer(minLength: 40)
                         
-                        // Delete button
                         Button {
                             showDeleteConfirmation = true
                         } label: {
@@ -1209,16 +1087,21 @@ struct EditItemView: View {
         .onAppear {
             title = item.title
             tags = item.tags
+            hasDueDate = item.dueDate != nil
+            dueDate = item.dueDate ?? Date()
         }
     }
     
     private func saveChanges() {
-        item.title = title.trimmingCharacters(in: .whitespaces)
-        item.tags = tags
+        let updated = item
+            .withTitle(title.trimmingCharacters(in: .whitespaces))
+            .withTags(tags)
+            .withDueDate(hasDueDate ? dueDate : nil)
+        store.update(updated)
     }
     
     private func deleteItem() {
-        modelContext.delete(item)
+        store.delete(item)
         dismiss()
     }
 }
@@ -1286,7 +1169,6 @@ struct BackburnerView: View {
                     .ignoresSafeArea()
                 
                 if items.isEmpty {
-                    // Empty state - explain the feature
                     VStack(spacing: Dash.Spacing.xl) {
                         Text("🔥")
                             .font(.system(size: 56))
@@ -1330,7 +1212,6 @@ struct BackburnerView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: Dash.Spacing.md) {
-                            // Friendly message
                             Text("These have been waiting a while.\nStill need them?")
                                 .font(Dash.Typography.body)
                                 .foregroundStyle(Dash.Colors.textSecondary)
@@ -1397,14 +1278,12 @@ struct BackburnerItemCard: View {
             }
             
             HStack {
-                // How long it's been waiting
                 Text("\(daysOld) days")
                     .font(Dash.Typography.caption)
                     .foregroundStyle(Dash.Colors.textTertiary)
                 
                 Spacer()
                 
-                // Actions
                 HStack(spacing: Dash.Spacing.sm) {
                     Button {
                         onRevive()
@@ -1451,5 +1330,5 @@ struct BackburnerItemCard: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: DashItem.self, inMemory: true)
+        .environment(DashStore())
 }
