@@ -17,7 +17,7 @@ struct BackburnerView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: Dash.Spacing.md) {
-                            Text("Ideas sitting here for 2+ weeks.\nStill relevant?")
+                            Text("Ideas sitting here for 4+ weeks.\nStill relevant?")
                                 .font(Dash.Typography.body)
                                 .foregroundStyle(Dash.Colors.textSecondary)
                                 .multilineTextAlignment(.center)
@@ -62,7 +62,7 @@ struct BackburnerView: View {
                     .font(Dash.Typography.title)
                     .foregroundStyle(Dash.Colors.textPrimary)
 
-                Text("Ideas sitting for 2+ weeks\nlive here, out of the way.")
+                Text("Ideas sitting for 4+ weeks\nlive here, out of the way.")
                     .font(Dash.Typography.body)
                     .foregroundStyle(Dash.Colors.textSecondary)
                     .multilineTextAlignment(.center)

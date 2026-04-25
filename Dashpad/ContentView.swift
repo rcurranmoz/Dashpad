@@ -15,8 +15,9 @@ struct ContentView: View {
     @AppStorage("sortMode") private var sortMode: SortMode = .newest
     @FocusState private var isInputFocused: Bool
     @FocusState private var isSearchFocused: Bool
+    @State private var selectedGroup: IdeaGroup? = nil
 
-    private static let backburnerDays = 14
+    private static let backburnerDays = 28
 
     // MARK: - Derived Collections
 
@@ -71,8 +72,27 @@ struct ContentView: View {
             .filter { !inputTags.contains($0) }
     }
 
+    private var isGroupingMode: Bool {
+        selectedTagFilter == nil && !isSearching
+    }
+
+    private var groupableTags: Set<String> {
+        Set(regularItems.flatMap { $0.tags })
+    }
+
+    private var activeGroups: [IdeaGroup] {
+        groupableTags.map { IdeaGroup(tag: $0) }
+            .sorted { TagPredictor.friendlyName(for: $0.tag) < TagPredictor.friendlyName(for: $1.tag) }
+    }
+
+    private var soloItems: [DashItem] {
+        regularItems.filter { $0.tags.isEmpty }
+    }
+
     private var isEmpty: Bool {
-        filteredRegular.isEmpty && filteredPinned.isEmpty
+        isSearching
+            ? filteredRegular.isEmpty && filteredPinned.isEmpty
+            : soloItems.isEmpty && filteredPinned.isEmpty
     }
 
     // MARK: - Body
@@ -121,6 +141,9 @@ struct ContentView: View {
         .sheet(isPresented: $showArchived) {
             ArchivedView()
         }
+        .sheet(item: $selectedGroup) { group in
+            GroupView(group: group)
+        }
         .onChange(of: allActiveTags) { _, newTags in
             if let sel = selectedTagFilter, !newTags.contains(sel) {
                 selectedTagFilter = nil
@@ -140,9 +163,10 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: Dash.Spacing.xs) {
                 Text("Dashpad")
                     .font(Dash.Typography.largeTitle)
+                    .tracking(-0.5)
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [Dash.Colors.textPrimary, Dash.Colors.textPrimary.opacity(0.8)],
+                            colors: [Dash.Colors.accentGradStart, Dash.Colors.accent, Dash.Colors.textPrimary.opacity(0.9)],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
@@ -265,19 +289,13 @@ struct ContentView: View {
     private var tagFilterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Dash.Spacing.sm) {
-                TagFilterPill(label: "All", color: Dash.Colors.accent, isSelected: selectedTagFilter == nil) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { selectedTagFilter = nil }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
                 ForEach(allActiveTags, id: \.self) { tag in
                     TagFilterPill(
                         label: tag,
                         color: Color(hex: TagPredictor.color(for: tag)),
-                        isSelected: selectedTagFilter == tag
+                        isSelected: false
                     ) {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            selectedTagFilter = selectedTagFilter == tag ? nil : tag
-                        }
+                        selectedGroup = IdeaGroup(tag: tag)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
                 }
@@ -301,25 +319,22 @@ struct ContentView: View {
                 }
             }
 
-            // Main ideas (or compact list mode if tag filter active)
+            // Main content — untagged items only (tagged items live in their category GroupView)
             Section {
-                if selectedTagFilter != nil && isListMode {
-                    ForEach(filteredRegular) { item in
-                        compactRow(item)
-                    }
+                if isSearching {
+                    ForEach(filteredRegular) { item in ideaRow(item) }
                 } else {
-                    ForEach(filteredRegular) { item in
-                        ideaRow(item)
-                    }
+                    ForEach(soloItems.sorted(by: sortMode)) { item in ideaRow(item) }
                 }
             } header: {
-                if !filteredPinned.isEmpty && !filteredRegular.isEmpty {
+                if !filteredPinned.isEmpty && !soloItems.isEmpty {
                     listSectionHeader("Ideas", icon: "lightbulb", color: Dash.Colors.textTertiary)
                 }
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.interactively)
         .contentMargins(.bottom, 130, for: .scrollContent)
         .overlay {
             if isEmpty {
@@ -403,6 +418,17 @@ struct ContentView: View {
             }
             .tint(Dash.Colors.warning)
         }
+    }
+
+    private func groupRow(_ group: IdeaGroup) -> some View {
+        let groupItems = regularItems.filter { $0.tags.contains(group.tag) }.sorted(by: sortMode)
+        return GroupCard(group: group, items: groupItems) {
+            selectedGroup = group
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 0, leading: Dash.Spacing.xl, bottom: Dash.Spacing.md, trailing: Dash.Spacing.xl))
     }
 
     private func listSectionHeader(_ title: String, icon: String, color: Color) -> some View {
@@ -639,6 +665,7 @@ struct ContentView: View {
             inputTags = []
         }
 
+        isInputFocused = false
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 

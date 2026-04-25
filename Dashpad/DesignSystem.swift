@@ -2,44 +2,66 @@ import SwiftUI
 
 enum Dash {
     enum Colors {
-        static let background = Color(hex: "09090B")
-        static let backgroundGradientTop = Color(hex: "13121A")
-        static let backgroundGradientBottom = Color(hex: "09090B")
+        // Backgrounds — deep navy-black
+        static let background       = Color(hex: "070A10")
+        static let bgTop            = Color(hex: "0C1018")
+        static let bgBottom         = Color(hex: "070A10")
 
-        static let cardBackground = Color(hex: "18181B")
-        static let cardBackgroundElevated = Color(hex: "1F1F23")
-        static let cardBorder = Color(hex: "27272A")
+        // Surfaces
+        static let surface          = Color(hex: "0C1018")
+        static let surfaceElevated  = Color(hex: "111822")
+        static let border           = Color(hex: "1A2030")
+        static let borderSubtle     = Color(hex: "131B27")
 
-        static let accent = Color(hex: "8B5CF6")
-        static let accentLight = Color(hex: "A78BFA")
-        static let accentGlow = Color(hex: "8B5CF6").opacity(0.4)
-        static let accentGradientStart = Color(hex: "8B5CF6")
-        static let accentGradientEnd = Color(hex: "6366F1")
+        // Accent: electric sky blue / cyan
+        static let accent           = Color(hex: "0EA5E9")   // sky-500
+        static let accentBright     = Color(hex: "38BDF8")   // sky-400
+        static let accentDim        = Color(hex: "0EA5E9").opacity(0.25)
+        static let accentGradStart  = Color(hex: "38BDF8")
+        static let accentGradEnd    = Color(hex: "0284C7")
 
-        static let success = Color(hex: "34D399")
-        static let successGlow = Color(hex: "34D399").opacity(0.4)
+        // Semantic
+        static let success          = Color(hex: "10B981")
+        static let successDim       = Color(hex: "10B981").opacity(0.25)
+        static let warning          = Color(hex: "F59E0B")
+        static let warningDim       = Color(hex: "F59E0B").opacity(0.25)
+        static let danger           = Color(hex: "F87171")
+        static let dangerDim        = Color(hex: "F87171").opacity(0.25)
 
-        static let warning = Color(hex: "FBBF24")
-        static let warningGlow = Color(hex: "FBBF24").opacity(0.3)
+        // Text
+        static let textPrimary      = Color(hex: "F1F5F9")   // slate-100
+        static let textSecondary    = Color(hex: "94A3B8")   // slate-400
+        static let textTertiary     = Color(hex: "475569")   // slate-600
 
-        static let overdue = Color(hex: "F87171")
-        static let overdueGlow = Color(hex: "F87171").opacity(0.3)
+        // Misc
+        static let divider          = Color(hex: "1E2A3A")
+        static let scrim            = Color(hex: "000000").opacity(0.6)
 
-        static let textPrimary = Color(hex: "FAFAFA")
-        static let textSecondary = Color(hex: "A1A1AA")
-        static let textTertiary = Color(hex: "52525B")
-
-        static let divider = Color(hex: "3F3F46")
+        // Legacy aliases so existing code compiles without changes
+        static let backgroundGradientTop    = bgTop
+        static let backgroundGradientBottom = bgBottom
+        static let cardBackground           = surface
+        static let cardBackgroundElevated   = surfaceElevated
+        static let cardBorder               = border
+        static let accentLight              = accentBright
+        static let accentGlow               = accentDim
+        static let accentGradientStart      = accentGradStart
+        static let accentGradientEnd        = accentGradEnd
+        static let successGlow              = successDim
+        static let warningGlow              = warningDim
+        static let overdue                  = danger
+        static let overdueLight             = Color(hex: "FCA5A5")
+        static let overdueGlow              = dangerDim
     }
 
     enum Typography {
-        static let largeTitle = Font.system(size: 32, weight: .semibold)
-        static let title = Font.system(size: 22, weight: .semibold)
-        static let title2 = Font.system(size: 18, weight: .medium)
-        static let headline = Font.system(size: 17, weight: .semibold)
-        static let body = Font.system(size: 16, weight: .regular)
-        static let caption = Font.system(size: 13, weight: .medium)
-        static let micro = Font.system(size: 11, weight: .semibold)
+        static let largeTitle   = Font.system(size: 36, weight: .black)
+        static let title        = Font.system(size: 22, weight: .semibold, design: .rounded)
+        static let title2       = Font.system(size: 18, weight: .medium)
+        static let headline     = Font.system(size: 16, weight: .semibold)
+        static let body         = Font.system(size: 15, weight: .regular)
+        static let caption      = Font.system(size: 13, weight: .medium)
+        static let micro        = Font.system(size: 11, weight: .semibold)
     }
 
     enum Spacing {

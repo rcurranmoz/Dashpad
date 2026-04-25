@@ -33,9 +33,21 @@ final class DashStore {
         do {
             let data = try Data(contentsOf: fileURL)
             items = try decoder.decode([DashItem].self, from: data)
+            migrateTagsIfNeeded()
         } catch {
             items = []
         }
+    }
+
+    private func migrateTagsIfNeeded() {
+        var changed = false
+        for i in items.indices where items[i].tags.isEmpty && !items[i].isArchived {
+            if let tag = TagPredictor.autoApplyTag(for: items[i].title, existingUserTags: []) {
+                items[i].tags = [tag]
+                changed = true
+            }
+        }
+        if changed { save() }
     }
 
     private func save() {

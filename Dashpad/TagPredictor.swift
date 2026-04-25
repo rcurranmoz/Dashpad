@@ -30,7 +30,7 @@ struct TagPredictor {
         "gym": ["health"], "workout": ["health"], "exercise": ["health"],
         "run": ["health"], "running": ["health"], "medicine": ["health"],
         "prescription": ["health"], "vitamin": ["health"], "therapy": ["health"],
-        "meditation": ["health"], "sleep": ["health"],
+        "meditation": ["health"],
 
         // Finance
         "pay": ["finance"], "bill": ["finance"], "rent": ["finance"],
@@ -38,7 +38,7 @@ struct TagPredictor {
         "taxes": ["finance"], "bank": ["finance"], "budget": ["finance"],
         "invoice": ["finance"], "subscription": ["finance"],
 
-        // Grocery / Shopping (food items trigger grocery)
+        // Grocery
         "milk": ["grocery"], "eggs": ["grocery"], "bread": ["grocery"],
         "butter": ["grocery"], "cheese": ["grocery"], "yogurt": ["grocery"],
         "chicken": ["grocery"], "beef": ["grocery"], "fish": ["grocery"],
@@ -48,18 +48,36 @@ struct TagPredictor {
         "coffee": ["grocery"], "tea": ["grocery"], "juice": ["grocery"],
         "water": ["grocery"], "soda": ["grocery"], "beer": ["grocery"],
         "wine": ["grocery"], "fruit": ["grocery"], "vegetables": ["grocery"],
-        "apples": ["grocery"], "bananas": ["grocery"], "tomatoes": ["grocery"],
-        "onions": ["grocery"], "garlic": ["grocery"], "potatoes": ["grocery"],
-        "spinach": ["grocery"], "lettuce": ["grocery"], "carrots": ["grocery"],
+        "apples": ["grocery"], "apple": ["grocery"],
+        "bananas": ["grocery"], "banana": ["grocery"],
+        "tomatoes": ["grocery"], "tomato": ["grocery"],
+        "onions": ["grocery"], "onion": ["grocery"],
+        "garlic": ["grocery"], "potatoes": ["grocery"], "potato": ["grocery"],
+        "spinach": ["grocery"], "lettuce": ["grocery"], "carrots": ["grocery"], "carrot": ["grocery"],
+        "broccoli": ["grocery"], "cucumber": ["grocery"], "celery": ["grocery"],
+        "peppers": ["grocery"], "zucchini": ["grocery"],
+        "mushrooms": ["grocery"], "mushroom": ["grocery"],
+        "avocado": ["grocery"], "avocados": ["grocery"],
+        "strawberries": ["grocery"], "blueberries": ["grocery"], "raspberries": ["grocery"],
+        "grapes": ["grocery"], "oranges": ["grocery"], "orange": ["grocery"],
+        "lemon": ["grocery"], "lemons": ["grocery"], "lime": ["grocery"], "limes": ["grocery"],
+        "mango": ["grocery"], "mangoes": ["grocery"], "pineapple": ["grocery"],
+        "berries": ["grocery"], "kale": ["grocery"], "arugula": ["grocery"],
         "cereal": ["grocery"], "granola": ["grocery"], "oats": ["grocery"],
         "snacks": ["grocery"], "chips": ["grocery"], "crackers": ["grocery"],
         "sauce": ["grocery"], "ketchup": ["grocery"], "mustard": ["grocery"],
-        "groceries": ["grocery"],
+        "mayo": ["grocery"], "mayonnaise": ["grocery"], "vinegar": ["grocery"],
+        "tortillas": ["grocery"], "wrap": ["grocery"], "pita": ["grocery"],
+        "hummus": ["grocery"], "salsa": ["grocery"], "guacamole": ["grocery"],
+        "groceries": ["grocery"], "toothpaste": ["grocery"], "shampoo": ["grocery"],
+        "detergent": ["grocery"], "soap": ["grocery"], "conditioner": ["grocery"],
+        "toilet": ["grocery"], "paper towels": ["grocery"], "tissues": ["grocery"],
+
         // Non-food shopping
         "buy": ["shopping"], "order": ["shopping"], "amazon": ["shopping"],
         "return": ["shopping"], "store": ["shopping"],
 
-        // Movies / TV / Media — watch triggers high confidence
+        // Movies / TV
         "watch": ["movies"], "rewatch": ["movies"],
         "movie": ["movies"], "film": ["movies"], "cinema": ["movies"],
         "netflix": ["movies"], "hulu": ["movies"], "hbo": ["movies"],
@@ -77,23 +95,23 @@ struct TagPredictor {
         // Apps / Software
         "app": ["apps"], "download": ["apps"], "software": ["apps"],
         "tool": ["apps"], "extension": ["apps"], "plugin": ["apps"],
-        "saas": ["apps"], "service": ["apps"],
+        "saas": ["apps"],
 
         // Ideas / Build
         "idea": ["ideas"], "concept": ["ideas"], "build": ["ideas"],
         "create": ["ideas"], "make": ["ideas"], "prototype": ["ideas"],
         "startup": ["ideas"], "product": ["ideas"], "feature": ["ideas"],
-        "side project": ["ideas"], "hack": ["ideas"],
+        "side project": ["ideas"],
 
         // Books / Reading
         "book": ["books"], "read": ["books"], "reading": ["books"],
-        "novel": ["books"], "author": ["books"], "chapter": ["books"],
-        "audiobook": ["books"], "kindle": ["books"],
+        "novel": ["books"], "author": ["books"], "audiobook": ["books"],
+        "kindle": ["books"],
 
         // Music
         "music": ["music"], "song": ["music"], "album": ["music"],
         "playlist": ["music"], "artist": ["music"], "concert": ["music"],
-        "gig": ["music"], "spotify": ["music"],
+        "spotify": ["music"],
 
         // Travel
         "flight": ["travel"], "hotel": ["travel"], "passport": ["travel"],
@@ -103,80 +121,109 @@ struct TagPredictor {
         // Social
         "friend": ["social"], "friends": ["social"], "party": ["social"],
         "dinner": ["social", "work"], "lunch": ["social", "work"],
-        "drinks": ["social"], "hangout": ["social"], "visit": ["social", "family"],
+        "drinks": ["social"], "hangout": ["social"],
 
         // Pets
         "dog": ["pets"], "cat": ["pets"], "vet": ["pets"],
         "feed": ["pets"], "pet": ["pets"],
     ]
 
-    // Tags where a single keyword match is enough to auto-apply
-    // (because the keyword is domain-specific and unambiguous)
-    private static let autoApplyKeywords: Set<String> = [
-        // Grocery — these are grocery items, full stop
-        "milk", "eggs", "bread", "butter", "cheese", "yogurt", "chicken",
-        "beef", "fish", "salmon", "pasta", "rice", "flour", "sugar",
-        "coffee", "tea", "juice", "fruit", "vegetables", "apples", "bananas",
-        "tomatoes", "onions", "garlic", "potatoes", "spinach", "lettuce",
-        "carrots", "cereal", "granola", "oats", "groceries",
-        // Movies — "watch X" is unambiguous
-        "watch", "rewatch",
-    ]
+    // Tags where any single keyword match is enough to auto-apply (high confidence categories)
+    private static let autoApplyTags: Set<String> = ["grocery", "movies"]
 
-    // MARK: - Public API
+    // MARK: - Friendly Names (shown instead of raw tag names)
 
-    /// Returns up to 3 suggested tags, prioritising existing user tags
-    static func suggestTags(for text: String, existingUserTags: [String]) -> [String] {
-        let scores = scoreText(text, existingUserTags: existingUserTags)
-        return scores
-            .sorted { $0.value > $1.value }
-            .prefix(3)
-            .map { $0.key }
+    static func friendlyName(for tag: String) -> String {
+        let names: [String: String] = [
+            "grocery":  "Grocery Run",
+            "shopping": "Shopping List",
+            "movies":   "Watch List",
+            "games":    "Play Next",
+            "books":    "Reading List",
+            "apps":     "Try These",
+            "ideas":    "Brain Dump",
+            "music":    "Listen List",
+            "travel":   "Trip Ideas",
+            "work":     "Work",
+            "family":   "Family",
+            "home":     "Home",
+            "health":   "Health",
+            "finance":  "Finance",
+            "social":   "Social",
+            "pets":     "Pets",
+        ]
+        return names[tag.lowercased()] ?? tag.capitalized
     }
 
-    /// Returns one tag to silently auto-apply when confidence is high enough.
-    /// Only fires for unambiguous domain keywords (grocery items, "watch X", etc.)
-    static func autoApplyTag(for text: String, existingUserTags: [String]) -> String? {
-        let words = text.lowercased().components(separatedBy: .whitespaces)
+    // MARK: - Emoji per Tag
 
-        for word in words {
-            if autoApplyKeywords.contains(word), let tags = keywordMappings[word] {
-                return tags.first
-            }
-        }
-
-        // Also fire if an existing user tag scores very high (user has trained the system)
-        let scores = scoreText(text, existingUserTags: existingUserTags)
-        if let top = scores.max(by: { $0.value < $1.value }), top.value >= 5 {
-            return top.key
-        }
-
-        return nil
+    static func emoji(for tag: String) -> String {
+        let emojis: [String: String] = [
+            "work":     "💼",
+            "family":   "🏡",
+            "home":     "🔧",
+            "health":   "💪",
+            "finance":  "💳",
+            "shopping": "🛍️",
+            "grocery":  "🛒",
+            "movies":   "🎬",
+            "games":    "🎮",
+            "apps":     "📲",
+            "ideas":    "💡",
+            "books":    "📚",
+            "music":    "🎵",
+            "social":   "🥂",
+            "travel":   "✈️",
+            "pets":     "🐾",
+            "urgent":   "🚨",
+        ]
+        return emojis[tag.lowercased()] ?? "🏷️"
     }
 
     // MARK: - Tag Colors
 
     static func color(for tag: String) -> String {
         let fixed: [String: String] = [
-            "work": "6366F1",
-            "family": "EC4899",
-            "home": "F59E0B",
-            "health": "10B981",
-            "finance": "06B6D4",
+            "work":     "6366F1",
+            "family":   "EC4899",
+            "home":     "F59E0B",
+            "health":   "10B981",
+            "finance":  "06B6D4",
             "shopping": "8B5CF6",
-            "grocery": "22C55E",
-            "movies": "EF4444",
-            "games": "F97316",
-            "apps": "3B82F6",
-            "ideas": "8B5CF6",
-            "books": "A78BFA",
-            "music": "EC4899",
-            "social": "F97316",
-            "travel": "0EA5E9",
-            "pets": "84CC16",
-            "urgent": "EF4444",
+            "grocery":  "22C55E",
+            "movies":   "EF4444",
+            "games":    "F97316",
+            "apps":     "3B82F6",
+            "ideas":    "A78BFA",
+            "books":    "D97706",
+            "music":    "EC4899",
+            "social":   "FB923C",
+            "travel":   "0EA5E9",
+            "pets":     "84CC16",
+            "urgent":   "EF4444",
         ]
         return fixed[tag.lowercased()] ?? generateColor(for: tag)
+    }
+
+    // MARK: - Smart Tag Suggestions
+
+    static func suggestTags(for text: String, existingUserTags: [String]) -> [String] {
+        let scores = scoreText(text, existingUserTags: existingUserTags)
+        return scores.sorted { $0.value > $1.value }.prefix(3).map { $0.key }
+    }
+
+    static func autoApplyTag(for text: String, existingUserTags: [String]) -> String? {
+        let words = text.lowercased().components(separatedBy: .whitespaces)
+        for word in words {
+            if let tags = keywordMappings[word], let tag = tags.first, autoApplyTags.contains(tag) {
+                return tag
+            }
+        }
+        let scores = scoreText(text, existingUserTags: existingUserTags)
+        if let top = scores.max(by: { $0.value < $1.value }), top.value >= 5 {
+            return top.key
+        }
+        return nil
     }
 
     // MARK: - Private
@@ -199,13 +246,9 @@ struct TagPredictor {
 
         for userTag in existingUserTags {
             let lt = userTag.lowercased()
-            if lowercased.contains(lt) {
-                scores[userTag, default: 0] += 5
-            }
+            if lowercased.contains(lt) { scores[userTag, default: 0] += 5 }
             for word in words {
-                if lt.contains(word) || word.contains(lt) {
-                    scores[userTag, default: 0] += 3
-                }
+                if lt.contains(word) || word.contains(lt) { scores[userTag, default: 0] += 3 }
             }
         }
 

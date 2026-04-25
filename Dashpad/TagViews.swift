@@ -8,16 +8,21 @@ struct TagFilterPill: View {
     let isSelected: Bool
     let action: () -> Void
 
+    private var displayLabel: String {
+        if label == "All" { return "All" }
+        return TagPredictor.emoji(for: label)
+    }
+
     var body: some View {
         Button(action: action) {
-            Text(label.capitalized)
+            Text(displayLabel)
                 .font(Dash.Typography.caption)
                 .foregroundStyle(isSelected ? .white : color)
                 .padding(.horizontal, Dash.Spacing.md)
                 .padding(.vertical, Dash.Spacing.sm)
                 .background(
                     Capsule()
-                        .fill(isSelected ? color : Dash.Colors.cardBackground)
+                        .fill(isSelected ? color : Dash.Colors.surface)
                         .overlay(Capsule().stroke(isSelected ? color : color.opacity(0.3), lineWidth: 1))
                 )
                 .shadow(color: isSelected ? color.opacity(0.4) : .clear, radius: 8, y: 2)
@@ -39,7 +44,7 @@ struct TagSuggestionChip: View {
             HStack(spacing: Dash.Spacing.xs) {
                 Image(systemName: "plus.circle.fill")
                     .font(.system(size: 12))
-                Text(tag.capitalized)
+                Text("\(TagPredictor.emoji(for: tag)) \(TagPredictor.friendlyName(for: tag))")
                     .font(Dash.Typography.caption)
             }
             .foregroundStyle(tagColor)
@@ -65,7 +70,7 @@ struct SelectedTagChip: View {
 
     var body: some View {
         HStack(spacing: Dash.Spacing.xs) {
-            Text(tag.capitalized)
+            Text("\(TagPredictor.emoji(for: tag)) \(TagPredictor.friendlyName(for: tag))")
                 .font(Dash.Typography.caption)
             Button(action: onRemove) {
                 Image(systemName: "xmark.circle.fill")
