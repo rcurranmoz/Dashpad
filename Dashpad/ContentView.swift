@@ -293,10 +293,16 @@ struct ContentView: View {
                     TagFilterPill(
                         label: tag,
                         color: Color(hex: TagPredictor.color(for: tag)),
-                        isSelected: false
+                        isSelected: inputTags.contains(tag)
                     ) {
-                        selectedGroup = IdeaGroup(tag: tag)
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        let hasText = !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        if isInputActive && hasText {
+                            if !inputTags.contains(tag) { inputTags.append(tag) }
+                            addItem()
+                        } else {
+                            selectedGroup = IdeaGroup(tag: tag)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
                     }
                 }
             }
