@@ -1,63 +1,72 @@
 # Dashpad
 
-**One list. Zero stress.**
+**Capture ideas. Act on them.**
 
-A minimalist iOS reminders app that gets out of your way. No folders, no complexity, no guilt — just a single list that helps you remember what matters.
+A minimalist iOS app for capturing ideas and thoughts the moment they strike. Smart categories, zero clutter, no stress.
 
-![iOS 17+](https://img.shields.io/badge/iOS-17%2B-blue)
-![Swift](https://img.shields.io/badge/Swift-5.9-orange)
+![iOS 26+](https://img.shields.io/badge/iOS-26%2B-blue)
+![Swift](https://img.shields.io/badge/Swift-6-orange)
 ![SwiftUI](https://img.shields.io/badge/SwiftUI-✓-green)
+![iCloud](https://img.shields.io/badge/iCloud-Sync-lightblue)
 
 ---
 
 ## Philosophy
 
-Most reminder apps try to do too much. Dashpad does less, better:
+Most capture apps try to do too much. Dashpad does less, better:
 
-- **One list** — No folders, no projects, no hierarchy
-- **Speed first** — Add a reminder in under 2 seconds
-- **No anxiety** — No overdue counts screaming at you, no streak guilt
-- **Delightful** — Small celebrations when you complete things
+- **Inbox first** — Untagged ideas land on the main screen, ready to act on
+- **Categories emerge naturally** — Tag suggestions appear as you type; one tap files the idea away
+- **No anxiety** — No overdue counts screaming at you, no guilt
+- **Delightful** — Animations that make capturing feel good
 
 ---
 
 ## Features
 
-### Smart Tags
-Type "walk dog" and Dashpad suggests `pets`. Type "call mom" and it suggests `family`. Tags emerge naturally from what you write — no manual organization required.
+### Smart Tag Suggestions
+Type "tomatoes onions" and a Grocery suggestion appears above the keyboard. Tap it — the item is tagged and filed in one shot, keyboard gone. Ideas you don't tag stay on the main screen as your inbox.
+
+### Category Groups
+Tagged items live in their category, completely off the main screen. Tap a category emoji pill to open that group as a sheet. The main screen stays clean.
 
 ### Natural Language Dates
-Type "dentist tomorrow 3pm" or "buy groceries friday" — Dashpad parses it automatically. No date pickers, no extra taps.
+Type "dentist tomorrow 3pm" or "flight friday 6am" — Dashpad parses it automatically. No date pickers, no extra taps.
 
 ### The Backburner 🔥
-Items sitting for 2+ weeks quietly move to the Backburner. Out of sight, out of mind. When you're ready, revive them — or let them go guilt-free.
+Ideas sitting for 4+ weeks quietly move to the Backburner — out of sight, out of mind. When you're ready, revive them or let them go guilt-free.
+
+### iCloud Sync
+Everything syncs automatically via iCloud Key-Value Storage. Add an idea on your phone, see it on your iPad.
 
 ### Sorting Options
-- **Newest first** — Fresh items at the top
+- **Newest first** — Fresh ideas at the top
 - **Due date** — What's urgent rises up
 - **Alphabetical** — When you need order
 
-### Completion Celebrations
-A subtle particle burst and haptic when you check something off. Small dopamine hits that make progress feel good.
+### Flame Splash
+A quick, over-the-top flame animation opens the app. Big to small, wobble, glow — done in under 2 seconds.
 
 ---
 
 ## Design
 
-Dashpad uses a dark, premium aesthetic inspired by Linear and Arc:
+Deep navy-black palette with electric sky-blue accents. Minimalist, premium, and fast:
 
-- Deep blacks (`#09090B`) with subtle purple accents (`#8B5CF6`)
-- SF Pro typography for a clean, modern feel
+- Dark backgrounds (`#070A10`) with sky-blue accent (`#0EA5E9`)
+- SF Pro Black for the wordmark, rounded typography throughout
 - Ambient glow orbs in the background
-- Spring animations throughout
+- Spring animations and haptic feedback throughout
+- Emoji-first category pills — no label clutter
 
 ---
 
 ## Tech Stack
 
-- **SwiftUI** — Declarative UI
-- **SwiftData** — Persistence (or custom store)
-- **iOS 17+** — Modern APIs
+- **SwiftUI** — Declarative UI with `@Observable`
+- **NSUbiquitousKeyValueStore** — iCloud sync
+- **iOS 26+** — Modern APIs, MainActor isolation
+- **Swift 6** — Strict concurrency
 
 ---
 
@@ -65,13 +74,20 @@ Dashpad uses a dark, premium aesthetic inspired by Linear and Arc:
 
 ```
 Dashpad/
-├── DashpadApp.swift      # App entry point
-├── ContentView.swift     # Main UI + components
+├── DashpadApp.swift      # App entry point + splash gate
+├── ContentView.swift     # Main screen, input bar, category pills
+├── IdeaCard.swift        # Card component with archive animation
+├── IdeaGroup.swift       # Category group model + GroupView sheet
+├── TagViews.swift        # Tag pills, suggestion chips
+├── TagPredictor.swift    # Smart tag suggestions + keyword mappings
+├── EditIdeaView.swift    # Edit sheet
+├── BackburnerView.swift  # 4-week backburner sheet
+├── ArchivedView.swift    # Archive history
 ├── DashItem.swift        # Data model
-├── DashStore.swift       # State management
-├── TagPredictor.swift    # Smart tag suggestions
-├── DateParser.swift      # Natural language dates
-├── SplashView.swift      # Launch screen
+├── DashStore.swift       # State management + iCloud sync
+├── DateParser.swift      # Natural language date parsing
+├── DesignSystem.swift    # Colors, typography, spacing tokens
+├── SplashView.swift      # Flame launch animation
 └── Assets.xcassets/      # App icons & colors
 ```
 
@@ -81,7 +97,9 @@ Dashpad/
 
 1. Clone the repo
 2. Open `Dashpad.xcodeproj` in Xcode
-3. Build and run on simulator or device (iOS 17+)
+3. Add your Apple ID in Signing & Capabilities
+4. Ensure iCloud → Key-Value Storage is enabled in capabilities
+5. Build and run on simulator or device (iOS 26+)
 
 ---
 
@@ -89,8 +107,8 @@ Dashpad/
 
 - [ ] Quick Capture widget
 - [ ] Daily digest notification
-- [ ] iCloud sync
 - [ ] Voice input
+- [ ] Siri / Shortcuts integration
 
 ---
 
@@ -100,4 +118,4 @@ MIT
 
 ---
 
-**Dashpad — Remember things. Then forget about them.**
+**Dashpad — Capture it. Then forget about it.**
