@@ -122,6 +122,16 @@ struct ContentView: View {
                 ideaList
             }
 
+            if isInputActive && inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        isInputFocused = false
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+            }
+
             VStack {
                 Spacer()
                 inputBar
@@ -211,16 +221,7 @@ struct ContentView: View {
                 }
 
                 Button { showArchived = true } label: {
-                    ZStack(alignment: .topTrailing) {
-                        headerIconButtonLabel(icon: "archivebox")
-                        if store.archivedCount > 0 {
-                            Circle()
-                                .fill(Dash.Colors.textTertiary)
-                                .frame(width: 10, height: 10)
-                                .overlay(Circle().stroke(Dash.Colors.background, lineWidth: 2))
-                                .offset(x: 4, y: -4)
-                        }
-                    }
+                    headerIconButtonLabel(icon: "archivebox")
                 }
             }
         }
@@ -295,8 +296,7 @@ struct ContentView: View {
                         color: Color(hex: TagPredictor.color(for: tag)),
                         isSelected: inputTags.contains(tag)
                     ) {
-                        let hasText = !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        if isInputActive && hasText {
+                        if !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             if !inputTags.contains(tag) { inputTags.append(tag) }
                             addItem()
                         } else {
@@ -321,7 +321,7 @@ struct ContentView: View {
                         ideaRow(item)
                     }
                 } header: {
-                    listSectionHeader("Pinned", icon: "pin.fill", color: Dash.Colors.warning)
+                    pinnedSectionHeader
                 }
             }
 
@@ -331,10 +331,6 @@ struct ContentView: View {
                     ForEach(filteredRegular) { item in ideaRow(item) }
                 } else {
                     ForEach(soloItems.sorted(by: sortMode)) { item in ideaRow(item) }
-                }
-            } header: {
-                if !filteredPinned.isEmpty && !soloItems.isEmpty {
-                    listSectionHeader("Ideas", icon: "lightbulb", color: Dash.Colors.textTertiary)
                 }
             }
         }
@@ -349,6 +345,22 @@ struct ContentView: View {
                     .offset(y: -60)
             }
         }
+    }
+
+    private var pinnedSectionHeader: some View {
+        HStack(spacing: Dash.Spacing.xs) {
+            Image(systemName: "pin.fill")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Dash.Colors.warning.opacity(0.7))
+            Text("PINNED")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Dash.Colors.warning.opacity(0.7))
+                .tracking(1.5)
+            Spacer()
+        }
+        .padding(.horizontal, Dash.Spacing.xl)
+        .padding(.vertical, Dash.Spacing.xs)
+        .listRowInsets(EdgeInsets())
     }
 
     // Compact checklist row (used when a tag filter is active for list-style tags)
@@ -437,23 +449,6 @@ struct ContentView: View {
         .listRowInsets(EdgeInsets(top: 0, leading: Dash.Spacing.xl, bottom: Dash.Spacing.md, trailing: Dash.Spacing.xl))
     }
 
-    private func listSectionHeader(_ title: String, icon: String, color: Color) -> some View {
-        HStack(spacing: Dash.Spacing.xs) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(color)
-            Text(title.uppercased())
-                .font(Dash.Typography.micro)
-                .foregroundStyle(color)
-                .tracking(1)
-            Spacer()
-        }
-        .padding(.horizontal, Dash.Spacing.xl)
-        .padding(.vertical, Dash.Spacing.xs)
-        .background(Dash.Colors.background.opacity(0.95))
-        .listRowInsets(EdgeInsets())
-    }
-
     // List mode: grocery/shopping → compact checklist; movies/games → still cards
     private var isListMode: Bool {
         guard let tag = selectedTagFilter else { return false }
@@ -521,19 +516,23 @@ struct ContentView: View {
 
                 HStack(alignment: .bottom, spacing: Dash.Spacing.md) {
                     HStack(alignment: .top, spacing: Dash.Spacing.md) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(isInputActive ? Dash.Colors.accent : Dash.Colors.textTertiary)
-                            .padding(.top, 3)
+                        if isInputActive {
+                            Image(systemName: "plus")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Dash.Colors.accent)
+                                .padding(.top, 3)
+                                .transition(.opacity)
+                        }
 
                         TextField(
                             "",
                             text: $inputText,
-                            prompt: Text("Capture an idea...").foregroundStyle(Dash.Colors.textTertiary),
+                            prompt: isInputActive ? nil : Text("Capture").foregroundStyle(Dash.Colors.textTertiary),
                             axis: .vertical
                         )
                         .font(Dash.Typography.body)
                         .foregroundStyle(Dash.Colors.textPrimary)
+                        .multilineTextAlignment(isInputActive ? .leading : .center)
                         .focused($isInputFocused)
                         .lineLimit(1...8)
                         .onSubmit { addItem() }
@@ -593,8 +592,8 @@ struct ContentView: View {
                     .foregroundStyle(Dash.Colors.textTertiary)
                 ForEach(suggestedInputTags, id: \.self) { tag in
                     TagSuggestionChip(tag: tag) {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { inputTags.append(tag) }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        if !inputTags.contains(tag) { inputTags.append(tag) }
+                        addItem()
                     }
                 }
             }
@@ -658,20 +657,15 @@ struct ContentView: View {
         let finalTitle = cleanedTitle.isEmpty ? firstLine : cleanedTitle
         let finalBody = bodyText.isEmpty ? nil : bodyText
 
-        // Auto-apply a tag if confidence is high (grocery items, "watch X", etc.)
-        var finalTags = inputTags
-        if let autoTag = TagPredictor.autoApplyTag(for: finalTitle, existingUserTags: allActiveTags),
-           !finalTags.contains(autoTag) {
-            finalTags.append(autoTag)
-        }
+        isInputFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 
         withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-            store.add(DashItem(title: finalTitle, body: finalBody, dueDate: date, tags: finalTags))
+            store.add(DashItem(title: finalTitle, body: finalBody, dueDate: date, tags: inputTags))
             inputText = ""
             inputTags = []
         }
 
-        isInputFocused = false
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 

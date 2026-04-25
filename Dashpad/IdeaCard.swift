@@ -19,7 +19,7 @@ struct IdeaCard: View {
         if item.isPinned { return Dash.Colors.warning }
         if isOverdue { return Dash.Colors.danger }
         if let tag = item.tags.first { return Color(hex: TagPredictor.color(for: tag)) }
-        return Dash.Colors.border
+        return .clear
     }
 
     private var miniTimeLabel: String? {
