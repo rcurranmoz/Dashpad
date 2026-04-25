@@ -2,88 +2,63 @@ import SwiftUI
 
 struct SplashView: View {
     @Environment(DashStore.self) private var store
-    
     @State private var showLogo = false
-    @State private var showCount = false
+    @State private var showTagline = false
     @Binding var isFinished: Bool
-    
-    private var funMessage: String {
-        let count = store.completedCount
+
+    private var tagline: String {
+        let count = store.archivedCount
         switch count {
-        case 0:
-            return "Ready to crush it"
-        case 1...5:
-            return "\(count) tasks crushed"
-        case 6...20:
-            return "\(count) tasks crushed 💪"
-        case 21...50:
-            return "\(count) tasks demolished"
-        case 51...100:
-            return "\(count) tasks destroyed 🔥"
-        default:
-            return "\(count) tasks annihilated 🚀"
+        case 0: return "Ready to capture"
+        case 1: return "1 idea acted on"
+        case 2...10: return "\(count) ideas acted on"
+        case 11...50: return "\(count) ideas captured 🧠"
+        case 51...200: return "\(count) ideas and counting 🚀"
+        default: return "You've been busy 🔥"
         }
     }
-    
+
     var body: some View {
         ZStack {
-            // Background
-            Dash.Colors.background
-                .ignoresSafeArea()
-            
+            Dash.Colors.background.ignoresSafeArea()
+
             VStack(spacing: 20) {
-                // Logo mark - three stacked lines like icon 02
                 VStack(spacing: 8) {
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(
-                            LinearGradient(
-                                colors: [Dash.Colors.accentLight, Dash.Colors.accent],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                        .fill(LinearGradient(
+                            colors: [Dash.Colors.accentLight, Dash.Colors.accent],
+                            startPoint: .leading, endPoint: .trailing
+                        ))
                         .frame(width: 64, height: 10)
-                    
+
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Dash.Colors.accent.opacity(0.6))
                         .frame(width: 48, height: 8)
-                    
+
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Dash.Colors.accent.opacity(0.3))
                         .frame(width: 32, height: 6)
                 }
                 .scaleEffect(showLogo ? 1 : 0.5)
                 .opacity(showLogo ? 1 : 0)
-                
-                // App name
+
                 Text("Dashpad")
-                    .font(.system(size: 28, weight: .semibold, design: .default))
+                    .font(.system(size: 28, weight: .semibold))
                     .foregroundStyle(Dash.Colors.textPrimary)
                     .opacity(showLogo ? 1 : 0)
-                
-                // Fun count
-                Text(funMessage)
+
+                Text(tagline)
                     .font(Dash.Typography.caption)
                     .foregroundStyle(Dash.Colors.textSecondary)
-                    .opacity(showCount ? 1 : 0)
-                    .offset(y: showCount ? 0 : 10)
+                    .opacity(showTagline ? 1 : 0)
+                    .offset(y: showTagline ? 0 : 10)
             }
         }
         .onAppear {
-            // Animate in
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                showLogo = true
-            }
-            
-            withAnimation(.easeOut(duration: 0.3).delay(0.2)) {
-                showCount = true
-            }
-            
-            // Dismiss after brief moment
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { showLogo = true }
+            withAnimation(.easeOut(duration: 0.3).delay(0.2)) { showTagline = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    isFinished = true
-                }
+                withAnimation(.easeOut(duration: 0.2)) { isFinished = true }
             }
         }
     }

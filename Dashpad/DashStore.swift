@@ -1,127 +1,99 @@
 import Foundation
 import SwiftUI
 
-/// Observable store that persists items to JSON
 @Observable
 final class DashStore {
     private(set) var items: [DashItem] = []
-    
+
     private let fileURL: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
-    
+
+    static let shared = DashStore()
+
     init() {
-        // Store in Application Support
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-        self.fileURL = appSupport.appendingPathComponent("dashpad-items.json")
-        
-        self.encoder = JSONEncoder()
+        fileURL = appSupport.appendingPathComponent("dashpad-items.json")
+
+        encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        
-        self.decoder = JSONDecoder()
+
+        decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        
+
         load()
     }
-    
+
     // MARK: - Persistence
-    
+
     private func load() {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            items = []
-            return
-        }
-        
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
         do {
             let data = try Data(contentsOf: fileURL)
             items = try decoder.decode([DashItem].self, from: data)
         } catch {
-            print("Failed to load items: \(error)")
             items = []
         }
     }
-    
+
     private func save() {
-        do {
-            let data = try encoder.encode(items)
-            try data.write(to: fileURL, options: .atomic)
-        } catch {
-            print("Failed to save items: \(error)")
-        }
+        guard let data = try? encoder.encode(items) else { return }
+        try? data.write(to: fileURL, options: .atomic)
     }
-    
-    // MARK: - CRUD Operations
-    
+
+    // MARK: - CRUD
+
     func add(_ item: DashItem) {
-        items.append(item)
+        items.insert(item, at: 0)
         save()
     }
-    
+
     func update(_ item: DashItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         items[index] = item
         save()
     }
-    
+
     func delete(_ item: DashItem) {
         items.removeAll { $0.id == item.id }
         save()
     }
-    
-    func delete(id: UUID) {
-        items.removeAll { $0.id == id }
+
+    func deleteAll(in collection: [DashItem]) {
+        let ids = Set(collection.map(\.id))
+        items.removeAll { ids.contains($0.id) }
         save()
     }
-    
-    /// Batch update multiple items (single save)
-    func updateBatch(_ updatedItems: [DashItem]) {
-        for updated in updatedItems {
-            if let index = items.firstIndex(where: { $0.id == updated.id }) {
-                items[index] = updated
-            }
-        }
-        save()
-    }
-    
-    // MARK: - Convenience Methods
-    
-    func complete(_ item: DashItem) {
-        update(item.completing())
-    }
-    
-    func uncomplete(_ item: DashItem) {
-        update(item.uncompleting())
-    }
-    
-    func moveToTop(_ item: DashItem) {
-        update(item.movedToTop())
-    }
-    
-    func revive(_ item: DashItem) {
-        update(item.revived())
-    }
-    
-    // MARK: - Computed Properties
-    
-    var completedItems: [DashItem] {
-        items.filter { $0.isComplete }
-    }
-    
-    var incompleteItems: [DashItem] {
-        items.filter { !$0.isComplete }
-    }
-    
-    var completedCount: Int {
-        items.filter { $0.isComplete }.count
-    }
+
+    // MARK: - Actions
+
+    func archive(_ item: DashItem) { update(item.archiving()) }
+    func unarchive(_ item: DashItem) { update(item.unarchiving()) }
+    func pin(_ item: DashItem) { update(item.pinned()) }
+    func unpin(_ item: DashItem) { update(item.unpinned()) }
+    func revive(_ item: DashItem) { update(item.revived()) }
+
+    // MARK: - Computed
+
+    var activeItems: [DashItem] { items.filter { !$0.isArchived } }
+    var archivedItems: [DashItem] { items.filter { $0.isArchived } }
+    var archivedCount: Int { archivedItems.count }
+
+    // MARK: - Backward compat (used by AppIntents)
+
+    var incompleteItems: [DashItem] { activeItems }
+    var completedItems: [DashItem] { archivedItems }
+    var completedCount: Int { archivedCount }
+    func complete(_ item: DashItem) { archive(item) }
+    func uncomplete(_ item: DashItem) { unarchive(item) }
 }
 
 // MARK: - Environment Key
 
 private struct DashStoreKey: EnvironmentKey {
-    static let defaultValue = DashStore()
+    static let defaultValue = DashStore.shared
 }
 
 extension EnvironmentValues {

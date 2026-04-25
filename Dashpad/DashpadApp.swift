@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct DashpadApp: App {
     @State private var splashFinished = false
-    @State private var store = DashStore()
+    @State private var store = DashStore.shared
     
     var body: some Scene {
         WindowGroup {
