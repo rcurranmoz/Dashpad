@@ -5,7 +5,11 @@ struct IdeaCard: View {
     let onArchive: () -> Void
     let onEdit: () -> Void
 
+    @Environment(DashStore.self) private var store
+
     @State private var isArchiving = false
+
+    private var isEnriching: Bool { store.enrichingIDs.contains(item.id) }
     @State private var showParticles = false
     @State private var particleProgress: CGFloat = 0
     @State private var particleOpacity: Double = 1
@@ -15,11 +19,8 @@ struct IdeaCard: View {
         return due < Date()
     }
 
-    private var stripColor: Color {
-        if item.isPinned { return Dash.Colors.warning }
-        if isOverdue { return Dash.Colors.danger }
-        if let tag = item.tags.first { return Color(hex: TagPredictor.color(for: tag)) }
-        return .clear
+    private var tagColor: Color? {
+        item.tags.first.map { Color(hex: TagPredictor.color(for: $0)) }
     }
 
     private var miniTimeLabel: String? {
@@ -42,25 +43,36 @@ struct IdeaCard: View {
 
     var body: some View {
         Button { onEdit() } label: {
-            HStack(spacing: 0) {
-                // Left tag-color accent strip
-                Rectangle()
-                    .fill(stripColor)
-                    .frame(width: 3)
-
-                HStack(spacing: Dash.Spacing.md) {
+                HStack(alignment: .top, spacing: Dash.Spacing.md) {
                     archiveButton
                         .padding(.leading, Dash.Spacing.lg)
+                        .padding(.top, Dash.Spacing.md)
 
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 6) {
                         HStack(alignment: .top, spacing: Dash.Spacing.sm) {
                             Text(item.title)
-                                .font(Dash.Typography.body)
+                                .font(Dash.Typography.idea)
                                 .foregroundStyle(isArchiving ? Dash.Colors.textTertiary : Dash.Colors.textPrimary)
                                 .strikethrough(isArchiving, color: Dash.Colors.textTertiary)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                            if item.isPinned {
+                                Image(systemName: "pin.fill")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(Dash.Colors.accent.opacity(0.8))
+                                    .rotationEffect(.degrees(45))
+                            }
+
+                            if isEnriching {
+                                // On-device model is reading this idea right now
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(Dash.Colors.accent)
+                                    .symbolEffect(.pulse, options: .repeating)
+                                    .transition(.scale.combined(with: .opacity))
+                            }
 
                             if let label = miniTimeLabel {
                                 Text(label)
@@ -72,28 +84,26 @@ struct IdeaCard: View {
 
                         if let bodyText = item.body, !bodyText.isEmpty {
                             Text(bodyText)
-                                .font(.system(size: 13, weight: .regular))
+                                .font(Dash.Typography.ideaBody)
                                 .foregroundStyle(Dash.Colors.textTertiary)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                         }
 
+                        // Quiet ink annotations — a colored dot and a name,
+                        // like a margin note, not a badge.
                         if !item.tags.isEmpty {
-                            HStack(spacing: 5) {
+                            HStack(spacing: Dash.Spacing.md) {
                                 ForEach(item.tags.prefix(3), id: \.self) { tag in
-                                    HStack(spacing: 3) {
-                                        Text(TagPredictor.emoji(for: tag))
-                                            .font(.system(size: 10))
-                                        Text(TagPredictor.friendlyName(for: tag))
-                                            .font(.system(size: 10, weight: .medium))
-                                            .foregroundStyle(Color(hex: TagPredictor.color(for: tag)))
+                                    HStack(spacing: 5) {
+                                        Circle()
+                                            .fill(Color(hex: TagPredictor.color(for: tag)))
+                                            .frame(width: 5, height: 5)
+                                        Text(TagPredictor.friendlyName(for: tag).uppercased())
+                                            .font(.system(size: 9.5, weight: .semibold))
+                                            .tracking(0.8)
+                                            .foregroundStyle(Color(hex: TagPredictor.color(for: tag)).opacity(0.85))
                                     }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(
-                                        Capsule()
-                                            .fill(Color(hex: TagPredictor.color(for: tag)).opacity(0.12))
-                                    )
                                 }
                                 if item.tags.count > 3 {
                                     Text("+\(item.tags.count - 3)")
@@ -101,17 +111,23 @@ struct IdeaCard: View {
                                         .foregroundStyle(Dash.Colors.textTertiary)
                                 }
                             }
+                            .padding(.top, 2)
+                            .transition(.scale(scale: 0.85, anchor: .leading).combined(with: .opacity))
                         }
                     }
                     .padding(.vertical, Dash.Spacing.lg)
                     .padding(.trailing, Dash.Spacing.lg)
-                }
             }
-            .background(cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Dash.Radius.md))
+            .dashCard(glow: cardGlow)
             .opacity(isArchiving ? 0.5 : 1)
         }
         .buttonStyle(.plain)
+    }
+
+    private var cardGlow: Color {
+        if item.isPinned { return Dash.Colors.accentDim.opacity(0.5) }
+        if isOverdue { return Dash.Colors.dangerDim.opacity(0.5) }
+        return .clear
     }
 
     // MARK: - Archive Button
@@ -120,14 +136,15 @@ struct IdeaCard: View {
         Button { triggerArchive() } label: {
             ZStack {
                 if showParticles {
-                    ForEach(0..<6, id: \.self) { i in
-                        let angle = (Double(i) / 6.0) * 2 * .pi
+                    // Sparks fly off when an idea is done
+                    ForEach(0..<7, id: \.self) { i in
+                        let angle = (Double(i) / 7.0) * 2 * .pi
                         Circle()
-                            .fill(Dash.Colors.success)
-                            .frame(width: 4, height: 4)
+                            .fill(i.isMultiple(of: 2) ? Dash.Colors.accentBright : Dash.Colors.accentDeep)
+                            .frame(width: i.isMultiple(of: 3) ? 3 : 4.5, height: i.isMultiple(of: 3) ? 3 : 4.5)
                             .offset(
-                                x: Foundation.cos(angle) * 16 * particleProgress,
-                                y: Foundation.sin(angle) * 16 * particleProgress
+                                x: Foundation.cos(angle) * 18 * particleProgress,
+                                y: Foundation.sin(angle) * 18 * particleProgress
                             )
                             .opacity(particleOpacity)
                     }
@@ -140,7 +157,7 @@ struct IdeaCard: View {
                         Circle().stroke(
                             isArchiving ? Dash.Colors.success
                                 : isOverdue ? Dash.Colors.danger.opacity(0.6)
-                                : Dash.Colors.divider,
+                                : (tagColor?.opacity(0.45) ?? Dash.Colors.textTertiary.opacity(0.55)),
                             lineWidth: 1.5
                         )
                     )
@@ -161,35 +178,6 @@ struct IdeaCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private var cardBackground: some View {
-        ZStack {
-            Dash.Colors.surface
-
-            if item.isPinned {
-                LinearGradient(
-                    colors: [Dash.Colors.warning.opacity(0.06), .clear],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: Dash.Radius.md)
-                .stroke(
-                    item.isPinned ? Dash.Colors.warning.opacity(0.25)
-                        : isOverdue ? Dash.Colors.danger.opacity(0.3)
-                        : Dash.Colors.border,
-                    lineWidth: 1
-                )
-        )
-        .shadow(
-            color: item.isPinned ? Dash.Colors.warning.opacity(0.1)
-                : isOverdue ? Dash.Colors.dangerDim.opacity(0.3)
-                : .black.opacity(0.25),
-            radius: 10, y: 4
-        )
     }
 
     // MARK: - Archive animation

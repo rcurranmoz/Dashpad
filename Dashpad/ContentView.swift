@@ -16,6 +16,9 @@ struct ContentView: View {
     @FocusState private var isInputFocused: Bool
     @FocusState private var isSearchFocused: Bool
     @State private var selectedGroup: IdeaGroup? = nil
+    @State private var aiSuggestedTags: [String] = []
+    @State private var emberBreathing = false
+    @State private var hasAppeared = false
 
     private static let backburnerDays = 28
 
@@ -65,11 +68,19 @@ struct ContentView: View {
         return result.sorted(by: sortMode)
     }
 
+    // Keyword suggestions are instant; the on-device model's picks merge in
+    // once it has had a beat to think (see the .task(id:) on the input bar).
     private var suggestedInputTags: [String] {
         guard !inputText.isEmpty else { return [] }
         let firstLine = inputText.components(separatedBy: "\n").first ?? inputText
-        return TagPredictor.suggestTags(for: firstLine, existingUserTags: allActiveTags)
-            .filter { !inputTags.contains($0) }
+        let keyword = TagPredictor.suggestTags(for: firstLine, existingUserTags: allActiveTags)
+        var merged = keyword
+        for tag in aiSuggestedTags where !merged.contains(tag) { merged.append(tag) }
+        return Array(merged.filter { !inputTags.contains($0) }.prefix(4))
+    }
+
+    private func isSmartSuggestion(_ tag: String) -> Bool {
+        aiSuggestedTags.contains(tag)
     }
 
     private var isGroupingMode: Bool {
@@ -85,14 +96,30 @@ struct ContentView: View {
             .sorted { TagPredictor.friendlyName(for: $0.tag) < TagPredictor.friendlyName(for: $1.tag) }
     }
 
-    private var soloItems: [DashItem] {
-        regularItems.filter { $0.tags.isEmpty }
+    // Anything time-sensitive surfaces here no matter where it's filed —
+    // auto-filing must never mean forgetting.
+    private var upNextItems: [DashItem] {
+        let horizon = Date().addingTimeInterval(7 * 24 * 3600)
+        return Array(
+            store.activeItems
+                .filter { !$0.isPinned && ($0.dueDate.map { $0 < horizon } ?? false) }
+                .sorted { ($0.dueDate ?? .distantPast) < ($1.dueDate ?? .distantPast) }
+                .prefix(3)
+        )
+    }
+
+    // The main feed shows every recent capture, tagged or not. Filing is
+    // something you watch happen on the card — not a disappearing act.
+    // Groups (via the pills) stay the tidy view; this is the living pad.
+    private var recentItems: [DashItem] {
+        let upNextIDs = Set(upNextItems.map(\.id))
+        return regularItems.filter { !upNextIDs.contains($0.id) }
     }
 
     private var isEmpty: Bool {
         isSearching
             ? filteredRegular.isEmpty && filteredPinned.isEmpty
-            : soloItems.isEmpty && filteredPinned.isEmpty
+            : recentItems.isEmpty && filteredPinned.isEmpty && upNextItems.isEmpty
     }
 
     // MARK: - Body
@@ -171,26 +198,49 @@ struct ContentView: View {
     private var header: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: Dash.Spacing.xs) {
-                Text("Dashpad")
-                    .font(Dash.Typography.largeTitle)
-                    .tracking(-0.5)
-                    .foregroundStyle(
+                // Serif wordmark with an ember full stop — set type, not WordArt
+                HStack(alignment: .lastTextBaseline, spacing: 3) {
+                    Text("Dashpad")
+                        .font(Dash.Typography.largeTitle)
+                        .foregroundStyle(Dash.Colors.textPrimary)
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [Dash.Colors.accentBright, Dash.Colors.accentDeep],
+                            startPoint: .top, endPoint: .bottom
+                        ))
+                        .frame(width: 7, height: 7)
+                        .shadow(color: Dash.Colors.accent.opacity(0.8), radius: 5)
+                }
+
+                // The splash's scribble, carried into the app — a small
+                // handwritten note under all that glass
+                ScribbleUnderline()
+                    .stroke(
                         LinearGradient(
-                            colors: [Dash.Colors.accentGradStart, Dash.Colors.accent, Dash.Colors.textPrimary.opacity(0.9)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
+                            colors: [Dash.Colors.accentBright, Dash.Colors.accentDeep],
+                            startPoint: .leading, endPoint: .trailing
+                        ),
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
                     )
-                Text(Date().formatted(.dateTime.weekday(.wide).month().day()))
-                    .font(Dash.Typography.caption)
-                    .foregroundStyle(Dash.Colors.textSecondary)
+                    .frame(width: 96, height: 8)
+                    .shadow(color: Dash.Colors.accent.opacity(0.4), radius: 4, y: 1)
+                    .padding(.vertical, 2)
+
+                Text(Date().formatted(.dateTime.weekday(.wide).month().day()).uppercased())
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(1.6)
+                    .foregroundStyle(Dash.Colors.textTertiary)
             }
 
             Spacer()
 
-            HStack(spacing: Dash.Spacing.sm) {
-                headerIconButton(icon: "magnifyingglass") {
+            // One quiet button. Everything occasional lives behind it —
+            // the screen belongs to the ideas.
+            Menu {
+                Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isSearching = true }
+                } label: {
+                    Label("Search", systemImage: "magnifyingglass")
                 }
 
                 Menu {
@@ -204,39 +254,38 @@ struct ContentView: View {
                         }
                     }
                 } label: {
-                    headerIconButtonLabel(icon: sortMode.icon)
+                    Label("Sort by", systemImage: sortMode.icon)
                 }
 
+                Divider()
+
                 Button { showBackburner = true } label: {
-                    ZStack(alignment: .topTrailing) {
-                        headerIconButtonLabel(emoji: "🔥")
-                        if !backburnerItems.isEmpty {
-                            Circle()
-                                .fill(Dash.Colors.warning)
-                                .frame(width: 10, height: 10)
-                                .overlay(Circle().stroke(Dash.Colors.background, lineWidth: 2))
-                                .offset(x: 4, y: -4)
-                        }
-                    }
+                    Label(
+                        backburnerItems.isEmpty ? "Backburner" : "Backburner (\(backburnerItems.count))",
+                        systemImage: "flame"
+                    )
                 }
 
                 Button { showArchived = true } label: {
-                    headerIconButtonLabel(icon: "archivebox")
+                    Label("Archive", systemImage: "archivebox")
+                }
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    headerIconButtonLabel(icon: "ellipsis")
+                    if !backburnerItems.isEmpty {
+                        Circle()
+                            .fill(Dash.Colors.accent)
+                            .frame(width: 8, height: 8)
+                            .overlay(Circle().stroke(Dash.Colors.background, lineWidth: 2))
+                            .offset(x: 2, y: -2)
+                    }
                 }
             }
         }
     }
 
-    private func headerIconButton(icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { headerIconButtonLabel(icon: icon) }
-    }
-
     private func headerIconButtonLabel(icon: String? = nil, emoji: String? = nil) -> some View {
-        ZStack {
-            Circle()
-                .fill(Dash.Colors.cardBackground)
-                .frame(width: 40, height: 40)
-                .overlay(Circle().stroke(Dash.Colors.cardBorder, lineWidth: 1))
+        Group {
             if let emoji {
                 Text(emoji).font(.system(size: 18))
             } else if let icon {
@@ -245,6 +294,8 @@ struct ContentView: View {
                     .foregroundStyle(Dash.Colors.textSecondary)
             }
         }
+        .frame(width: 40, height: 40)
+        .glassEffect(.regular.interactive(), in: .circle)
     }
 
     // MARK: - Search Bar
@@ -294,7 +345,8 @@ struct ContentView: View {
                     TagFilterPill(
                         label: tag,
                         color: Color(hex: TagPredictor.color(for: tag)),
-                        isSelected: inputTags.contains(tag)
+                        isSelected: inputTags.contains(tag),
+                        count: store.activeItems.count(where: { $0.tags.contains(tag) })
                     ) {
                         if !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             if !inputTags.contains(tag) { inputTags.append(tag) }
@@ -314,27 +366,57 @@ struct ContentView: View {
 
     private var ideaList: some View {
         List {
+            // Up Next — time-sensitive ideas from any category.
+            // Filed never means forgotten.
+            if !upNextItems.isEmpty && !isSearching {
+                Section {
+                    ForEach(Array(upNextItems.enumerated()), id: \.element.id) { index, item in
+                        upNextRow(item)
+                            .cascadeIn(index: index, revealed: hasAppeared)
+                    }
+                } header: {
+                    sectionHeader(icon: "clock.fill", title: "UP NEXT", color: Dash.Colors.accent)
+                }
+            }
+
             // Pinned section
             if !filteredPinned.isEmpty {
                 Section {
-                    ForEach(filteredPinned) { item in
+                    ForEach(Array(filteredPinned.enumerated()), id: \.element.id) { index, item in
                         ideaRow(item)
+                            .cascadeIn(index: index + upNextItems.count, revealed: hasAppeared)
                     }
                 } header: {
                     pinnedSectionHeader
                 }
             }
 
-            // Main content — untagged items only (tagged items live in their category GroupView)
+            // Main feed — every recent capture, tagged or not
             Section {
                 if isSearching {
                     ForEach(filteredRegular) { item in ideaRow(item) }
                 } else {
-                    ForEach(soloItems.sorted(by: sortMode)) { item in ideaRow(item) }
+                    let recent = recentItems.sorted(by: sortMode)
+                    ForEach(Array(recent.enumerated()), id: \.element.id) { index, item in
+                        ideaRow(item)
+                            .cascadeIn(index: index + upNextItems.count + filteredPinned.count, revealed: hasAppeared)
+                    }
+                }
+            } header: {
+                if !isSearching && (!upNextItems.isEmpty || !filteredPinned.isEmpty) && !recentItems.isEmpty {
+                    sectionHeader(icon: "tray.fill", title: "RECENT", color: Dash.Colors.textTertiary)
                 }
             }
+
         }
         .listStyle(.plain)
+        .onAppear {
+            // Cards deal in just as the splash hands off
+            Task {
+                try? await Task.sleep(for: .seconds(2.2))
+                hasAppeared = true
+            }
+        }
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .contentMargins(.bottom, 130, for: .scrollContent)
@@ -348,19 +430,82 @@ struct ContentView: View {
     }
 
     private var pinnedSectionHeader: some View {
+        sectionHeader(icon: "pin.fill", title: "PINNED", color: Dash.Colors.warning.opacity(0.7))
+    }
+
+    private func sectionHeader(icon: String, title: String, color: Color) -> some View {
         HStack(spacing: Dash.Spacing.xs) {
-            Image(systemName: "pin.fill")
+            Image(systemName: icon)
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(Dash.Colors.warning.opacity(0.7))
-            Text("PINNED")
+                .foregroundStyle(color)
+            Text(title)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Dash.Colors.warning.opacity(0.7))
+                .foregroundStyle(color)
                 .tracking(1.5)
             Spacer()
         }
         .padding(.horizontal, Dash.Spacing.xl)
         .padding(.vertical, Dash.Spacing.xs)
         .listRowInsets(EdgeInsets())
+    }
+
+    // MARK: - Up Next Row
+
+    private func dueChip(_ due: Date) -> (label: String, color: Color) {
+        let cal = Calendar.current
+        let time = due.formatted(date: .omitted, time: .shortened).lowercased()
+        if due < Date() { return ("overdue", Dash.Colors.danger) }
+        if cal.isDateInToday(due) { return ("today \(time)", Dash.Colors.accent) }
+        if cal.isDateInTomorrow(due) { return ("tmrw \(time)", Dash.Colors.accent) }
+        let day = due.formatted(.dateTime.weekday(.abbreviated)).lowercased()
+        return ("\(day) \(time)", Dash.Colors.textSecondary)
+    }
+
+    private func upNextRow(_ item: DashItem) -> some View {
+        let chip = dueChip(item.dueDate ?? Date())
+        return Button { editingItem = item } label: {
+            HStack(spacing: Dash.Spacing.md) {
+                Text(chip.label)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(chip.color)
+                    .padding(.horizontal, Dash.Spacing.sm)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(chip.color.opacity(0.14)))
+
+                Text(item.title)
+                    .font(Dash.Typography.ideaBody)
+                    .foregroundStyle(Dash.Colors.textPrimary)
+                    .lineLimit(1)
+
+                Spacer(minLength: Dash.Spacing.sm)
+
+                if let tag = item.tags.first {
+                    Circle()
+                        .fill(Color(hex: TagPredictor.color(for: tag)))
+                        .frame(width: 5, height: 5)
+                }
+            }
+            .padding(.horizontal, Dash.Spacing.md)
+            .padding(.vertical, Dash.Spacing.sm + 2)
+            .background(
+                RoundedRectangle(cornerRadius: Dash.Radius.sm)
+                    .fill(Dash.Colors.surface.opacity(0.65))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Dash.Radius.sm)
+                            .strokeBorder(Dash.Colors.borderSubtle, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 0, leading: Dash.Spacing.xl, bottom: 6, trailing: Dash.Spacing.xl))
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button { archive(item) } label: {
+                Label("Done", systemImage: "checkmark")
+            }
+            .tint(Dash.Colors.success)
+        }
     }
 
     // Compact checklist row (used when a tag filter is active for list-style tags)
@@ -438,17 +583,6 @@ struct ContentView: View {
         }
     }
 
-    private func groupRow(_ group: IdeaGroup) -> some View {
-        let groupItems = regularItems.filter { $0.tags.contains(group.tag) }.sorted(by: sortMode)
-        return GroupCard(group: group, items: groupItems) {
-            selectedGroup = group
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 0, leading: Dash.Spacing.xl, bottom: Dash.Spacing.md, trailing: Dash.Spacing.xl))
-    }
-
     // List mode: grocery/shopping → compact checklist; movies/games → still cards
     private var isListMode: Bool {
         guard let tag = selectedTagFilter else { return false }
@@ -471,22 +605,26 @@ struct ContentView: View {
     private var emptyState: some View {
         let msg = emptyStateMessages[Calendar.current.component(.hour, from: Date()) % emptyStateMessages.count]
         return VStack(spacing: Dash.Spacing.lg) {
-            ZStack {
-                Circle()
-                    .fill(Dash.Colors.cardBackground)
-                    .frame(width: 64, height: 64)
-                    .overlay(Circle().stroke(Dash.Colors.cardBorder, lineWidth: 1))
-                Image(systemName: isSearching ? "magnifyingglass" : "lightbulb")
-                    .font(.system(size: 22, weight: .light))
-                    .foregroundStyle(Dash.Colors.textTertiary)
-            }
+            Image(systemName: isSearching ? "magnifyingglass" : "lightbulb.fill")
+                .font(.system(size: 26))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Dash.Colors.accentBright, Dash.Colors.accentDeep],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+                .shadow(color: Dash.Colors.accent.opacity(emberBreathing ? 0.7 : 0.3), radius: 14)
+                .animation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true), value: emberBreathing)
+                .frame(width: 64, height: 64)
+                .glassEffect(.regular, in: .circle)
+
             VStack(spacing: Dash.Spacing.xs) {
                 Text(isSearching ? "No results" : msg.0)
-                    .font(Dash.Typography.body)
+                    .font(.system(size: 19, weight: .medium, design: .serif))
                     .foregroundStyle(Dash.Colors.textPrimary)
                 if !isSearching && !msg.1.isEmpty {
                     Text(msg.1)
-                        .font(Dash.Typography.caption)
+                        .font(.system(size: 14, design: .serif).italic())
                         .foregroundStyle(Dash.Colors.textTertiary)
                 }
             }
@@ -527,10 +665,12 @@ struct ContentView: View {
                         TextField(
                             "",
                             text: $inputText,
-                            prompt: isInputActive ? nil : Text("Capture").foregroundStyle(Dash.Colors.textTertiary),
+                            prompt: isInputActive ? nil : Text("Capture a thought…")
+                                .font(.system(size: 15, design: .serif).italic())
+                                .foregroundStyle(Dash.Colors.textTertiary),
                             axis: .vertical
                         )
-                        .font(Dash.Typography.body)
+                        .font(Dash.Typography.idea)
                         .foregroundStyle(Dash.Colors.textPrimary)
                         .multilineTextAlignment(isInputActive ? .leading : .center)
                         .focused($isInputFocused)
@@ -540,38 +680,27 @@ struct ContentView: View {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                                 isInputActive = focused
                             }
+                            if focused { DashIntelligence.prewarm() }
                         }
                     }
                     .padding(.horizontal, Dash.Spacing.lg)
                     .padding(.vertical, Dash.Spacing.md + 2)
-                    .background(
-                        RoundedRectangle(cornerRadius: Dash.Radius.xl)
-                            .fill(Dash.Colors.cardBackgroundElevated)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: Dash.Radius.xl).stroke(
-                                    isInputActive
-                                        ? LinearGradient(colors: [Dash.Colors.accent.opacity(0.6), Dash.Colors.accent.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                        : LinearGradient(colors: [Dash.Colors.cardBorder, Dash.Colors.cardBorder], startPoint: .top, endPoint: .bottom),
-                                    lineWidth: 1
-                                )
-                            )
-                            .shadow(color: isInputActive ? Dash.Colors.accentGlow.opacity(0.5) : .clear, radius: 16, y: 4)
+                    .glassEffect(
+                        isInputActive
+                            ? .regular.tint(Dash.Colors.accent.opacity(0.16)).interactive()
+                            : .regular,
+                        in: .rect(cornerRadius: Dash.Radius.xl)
                     )
+                    .shadow(color: isInputActive ? Dash.Colors.accentGlow.opacity(0.5) : .clear, radius: 16, y: 4)
 
                     if !inputText.trimmingCharacters(in: .whitespaces).isEmpty {
                         Button { addItem() } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(LinearGradient(
-                                        colors: [Dash.Colors.accentGradientStart, Dash.Colors.accentGradientEnd],
-                                        startPoint: .topLeading, endPoint: .bottomTrailing
-                                    ))
-                                    .frame(width: 48, height: 48)
-                                    .shadow(color: Dash.Colors.accentGlow, radius: 12, y: 4)
-                                Image(systemName: "arrow.up")
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundStyle(.white)
-                            }
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 48, height: 48)
+                                .glassEffect(.regular.tint(Dash.Colors.accent).interactive(), in: .circle)
+                                .shadow(color: Dash.Colors.accentGlow, radius: 12, y: 4)
                         }
                         .transition(.scale.combined(with: .opacity))
                     }
@@ -582,6 +711,19 @@ struct ContentView: View {
             .padding(.bottom, Dash.Spacing.xxl)
             .background(Dash.Colors.background)
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: suggestedInputTags)
+        .task(id: inputText) {
+            // Debounced on-device read of what's being typed: pause for a
+            // moment and the model's category pick joins the suggestion chips.
+            aiSuggestedTags = []
+            let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard DashIntelligence.isAvailable, text.count >= 10 else { return }
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            let result = await DashIntelligence.analyze(text, knownTags: allActiveTags)
+            guard !Task.isCancelled, let result else { return }
+            aiSuggestedTags = result.tags
+        }
     }
 
     private var tagSuggestionsBar: some View {
@@ -591,10 +733,11 @@ struct ContentView: View {
                     .font(Dash.Typography.micro)
                     .foregroundStyle(Dash.Colors.textTertiary)
                 ForEach(suggestedInputTags, id: \.self) { tag in
-                    TagSuggestionChip(tag: tag) {
+                    TagSuggestionChip(tag: tag, isSmart: isSmartSuggestion(tag)) {
                         if !inputTags.contains(tag) { inputTags.append(tag) }
                         addItem()
                     }
+                    .transition(.scale(scale: 0.8).combined(with: .opacity))
                 }
             }
             .padding(.horizontal, Dash.Spacing.xl)
@@ -618,26 +761,26 @@ struct ContentView: View {
 
     // MARK: - Background
 
+    // Warm ink black, lit faintly from below like a bed of coals.
+    // The glow breathes on a slow cycle — alive, but never distracting.
     private var backgroundView: some View {
         ZStack {
             LinearGradient(
-                colors: [Dash.Colors.backgroundGradientTop, Dash.Colors.backgroundGradientBottom],
+                colors: [Dash.Colors.bgTop, Dash.Colors.background],
                 startPoint: .top, endPoint: .bottom
             )
-            GeometryReader { geo in
-                Circle()
-                    .fill(Dash.Colors.accent.opacity(0.07))
-                    .frame(width: 300, height: 300)
-                    .blur(radius: 80)
-                    .offset(x: -100, y: -50)
-                Circle()
-                    .fill(Dash.Colors.accentGradientEnd.opacity(0.04))
-                    .frame(width: 250, height: 250)
-                    .blur(radius: 70)
-                    .offset(x: geo.size.width - 100, y: geo.size.height * 0.4)
-            }
+
+            // No fireplace wallpaper — just a cool sheen falling from the
+            // top-left, like room light on glass. The ember only appears
+            // where it means something: the dot, the scribble, the sparks.
+            LinearGradient(
+                colors: [Color.white.opacity(0.045), .clear],
+                startPoint: .topLeading,
+                endPoint: UnitPoint(x: 0.55, y: 0.4)
+            )
         }
         .ignoresSafeArea()
+        .onAppear { emberBreathing = true }
     }
 
     // MARK: - Actions
@@ -660,10 +803,18 @@ struct ContentView: View {
         isInputFocused = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 
+        let newItem = DashItem(title: finalTitle, body: finalBody, dueDate: date, tags: inputTags)
         withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-            store.add(DashItem(title: finalTitle, body: finalBody, dueDate: date, tags: inputTags))
+            store.add(newItem)
             inputText = ""
             inputTags = []
+            aiSuggestedTags = []
+        }
+
+        // Capture is instant; understanding arrives a beat later.
+        // The on-device model files the idea while the card is already on screen.
+        if newItem.tags.isEmpty {
+            store.enrich(newItem)
         }
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()

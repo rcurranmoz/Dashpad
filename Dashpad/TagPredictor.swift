@@ -2,6 +2,14 @@ import Foundation
 
 struct TagPredictor {
 
+    /// The full built-in category vocabulary, used both for keyword scoring
+    /// and as the allowed tag list for on-device intelligence.
+    static let builtInTags: [String] = [
+        "work", "family", "home", "health", "finance", "grocery", "shopping",
+        "movies", "games", "apps", "ideas", "books", "music", "travel",
+        "social", "pets",
+    ]
+
     // MARK: - Keyword → Tag Mappings
 
     private static let keywordMappings: [String: [String]] = [
@@ -182,25 +190,27 @@ struct TagPredictor {
 
     // MARK: - Tag Colors
 
+    // Dusty, warm-shifted palette — reads like colored ink on dark paper
+    // rather than neon chips on a slide.
     static func color(for tag: String) -> String {
         let fixed: [String: String] = [
-            "work":     "6366F1",
-            "family":   "EC4899",
-            "home":     "F59E0B",
-            "health":   "10B981",
-            "finance":  "06B6D4",
-            "shopping": "8B5CF6",
-            "grocery":  "22C55E",
-            "movies":   "EF4444",
-            "games":    "F97316",
-            "apps":     "3B82F6",
-            "ideas":    "A78BFA",
-            "books":    "D97706",
-            "music":    "EC4899",
-            "social":   "FB923C",
-            "travel":   "0EA5E9",
-            "pets":     "84CC16",
-            "urgent":   "EF4444",
+            "work":     "8E88E8",
+            "family":   "E08BAB",
+            "home":     "D9A05B",
+            "health":   "84BB8F",
+            "finance":  "6FB5BA",
+            "shopping": "AC90DB",
+            "grocery":  "97C271",
+            "movies":   "E0705F",
+            "games":    "E29349",
+            "apps":     "82A8DE",
+            "ideas":    "C9A7F0",
+            "books":    "C98F52",
+            "music":    "D983A8",
+            "social":   "E2A362",
+            "travel":   "72AFC9",
+            "pets":     "A8C25B",
+            "urgent":   "E5484D",
         ]
         return fixed[tag.lowercased()] ?? generateColor(for: tag)
     }
@@ -256,7 +266,7 @@ struct TagPredictor {
     }
 
     private static func generateColor(for tag: String) -> String {
-        let palette = ["8B5CF6", "EC4899", "F59E0B", "10B981", "06B6D4", "3B82F6", "F97316", "84CC16"]
+        let palette = ["AC90DB", "E08BAB", "D9A05B", "84BB8F", "6FB5BA", "82A8DE", "E29349", "A8C25B"]
         return palette[abs(tag.hashValue) % palette.count]
     }
 }
