@@ -96,15 +96,14 @@ struct ContentView: View {
             .sorted { TagPredictor.friendlyName(for: $0.tag) < TagPredictor.friendlyName(for: $1.tag) }
     }
 
-    // Anything time-sensitive surfaces here no matter where it's filed —
-    // auto-filing must never mean forgetting.
+    // The next few due things, no matter how far out or where they're
+    // filed — auto-filing must never mean forgetting.
     private var upNextItems: [DashItem] {
-        let horizon = Date().addingTimeInterval(7 * 24 * 3600)
-        return Array(
+        Array(
             store.activeItems
-                .filter { !$0.isPinned && ($0.dueDate.map { $0 < horizon } ?? false) }
+                .filter { !$0.isPinned && $0.dueDate != nil }
                 .sorted { ($0.dueDate ?? .distantPast) < ($1.dueDate ?? .distantPast) }
-                .prefix(3)
+                .prefix(4)
         )
     }
 
@@ -462,8 +461,13 @@ struct ContentView: View {
         if due < Date() { return ("overdue", Dash.Colors.danger) }
         if cal.isDateInToday(due) { return ("today \(time)", Dash.Colors.accent) }
         if cal.isDateInTomorrow(due) { return ("tmrw \(time)", Dash.Colors.accent) }
-        let day = due.formatted(.dateTime.weekday(.abbreviated)).lowercased()
-        return ("\(day) \(time)", Dash.Colors.textSecondary)
+        let days = cal.dateComponents([.day], from: Date(), to: due).day ?? 0
+        if days <= 6 {
+            let day = due.formatted(.dateTime.weekday(.abbreviated)).lowercased()
+            return ("\(day) \(time)", Dash.Colors.textSecondary)
+        }
+        let date = due.formatted(.dateTime.month(.abbreviated).day()).lowercased()
+        return (date, Dash.Colors.textSecondary)
     }
 
     private func upNextRow(_ item: DashItem) -> some View {
