@@ -108,16 +108,18 @@ struct ContentView: View {
         )
     }
 
-    private var soloItems: [DashItem] {
+    // The main feed shows every recent capture, tagged or not. Filing is
+    // something you watch happen on the card — not a disappearing act.
+    // Groups (via the pills) stay the tidy view; this is the living pad.
+    private var recentItems: [DashItem] {
         let upNextIDs = Set(upNextItems.map(\.id))
-        return regularItems.filter { $0.tags.isEmpty && !upNextIDs.contains($0.id) }
+        return regularItems.filter { !upNextIDs.contains($0.id) }
     }
-
 
     private var isEmpty: Bool {
         isSearching
             ? filteredRegular.isEmpty && filteredPinned.isEmpty
-            : soloItems.isEmpty && filteredPinned.isEmpty && upNextItems.isEmpty
+            : recentItems.isEmpty && filteredPinned.isEmpty && upNextItems.isEmpty
     }
 
     // MARK: - Body
@@ -389,16 +391,20 @@ struct ContentView: View {
                 }
             }
 
-            // Main content — untagged items only (tagged items live in their category GroupView)
+            // Main feed — every recent capture, tagged or not
             Section {
                 if isSearching {
                     ForEach(filteredRegular) { item in ideaRow(item) }
                 } else {
-                    let solo = soloItems.sorted(by: sortMode)
-                    ForEach(Array(solo.enumerated()), id: \.element.id) { index, item in
+                    let recent = recentItems.sorted(by: sortMode)
+                    ForEach(Array(recent.enumerated()), id: \.element.id) { index, item in
                         ideaRow(item)
                             .cascadeIn(index: index + upNextItems.count + filteredPinned.count, revealed: hasAppeared)
                     }
+                }
+            } header: {
+                if !isSearching && (!upNextItems.isEmpty || !filteredPinned.isEmpty) && !recentItems.isEmpty {
+                    sectionHeader(icon: "tray.fill", title: "RECENT", color: Dash.Colors.textTertiary)
                 }
             }
 
