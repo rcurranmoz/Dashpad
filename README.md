@@ -24,6 +24,15 @@ Most capture apps try to do too much. Dashpad does less, better:
 
 ## Features
 
+### On-Device Intelligence 🧠
+Dashpad uses Apple's Foundation Models framework — the on-device LLM behind Apple Intelligence — to *understand* what you capture. No server, no API key, no idea ever leaves your phone.
+
+- **Magic filing** — Capture is instant. A sparkle pulses on the card while the model reads it, then the right category and due date pop in a beat later. "salmon, arugula, that pinot bethany likes" files itself into Grocery Run — no keywords required.
+- **Live smart chips** — Pause while typing and the model's category pick joins the suggestion chips above the keyboard (keyword matches still appear instantly).
+- **Spark ✨** — Open any idea and tap *Spark next steps*: the model turns a raw thought into 2–4 concrete next steps, appended to your notes.
+- **Smart Siri capture** — "Add to Dashpad" from Siri or the Action Button gets the same brain: filed and dated before you unlock your phone.
+- **Graceful fallback** — On devices without Apple Intelligence, everything falls back to the original keyword + regex engine. The app never blocks on the model.
+
 ### Smart Tag Suggestions
 Type "tomatoes onions" and a Grocery suggestion appears above the keyboard. Tap it — the item is tagged and filed in one shot, keyboard gone. Ideas you don't tag stay on the main screen as your inbox.
 
@@ -31,7 +40,7 @@ Type "tomatoes onions" and a Grocery suggestion appears above the keyboard. Tap 
 Tagged items live in their category, completely off the main screen. Tap a category emoji pill to open that group as a sheet. The main screen stays clean.
 
 ### Natural Language Dates
-Type "dentist tomorrow 3pm" or "flight friday 6am" — Dashpad parses it automatically. No date pickers, no extra taps.
+Type "dentist tomorrow 3pm", "flight friday 6am", "renew registration before june 12", or "car inspection next month" — Dashpad parses it automatically. Three layers deep: fast regexes, the system data detector, and the on-device model for anything else. No date pickers, no extra taps.
 
 ### The Backburner 🔥
 Ideas sitting for 4+ weeks quietly move to the Backburner — out of sight, out of mind. When you're ready, revive them or let them go guilt-free.
@@ -44,26 +53,27 @@ Everything syncs automatically via iCloud Key-Value Storage. Add an idea on your
 - **Due date** — What's urgent rises up
 - **Alphabetical** — When you need order
 
-### Flame Splash
-A quick, over-the-top flame animation opens the app. Big to small, wobble, glow — done in under 2 seconds.
+### The Boot
+A two-second story: a lightbulb flickers to life in the dark — the idea strikes — then a hand-drawn ember underline scribbles itself beneath the wordmark: jotted down before it escapes. Cards cascade onto the pad as the splash hands off.
 
 ---
 
 ## Design
 
-Deep navy-black palette with electric sky-blue accents. Minimalist, premium, and fast:
+**Embers in the dark.** Warm ink-black paper, ideas typeset in serif, a single ember accent. A midnight notebook, not a dashboard:
 
-- Dark backgrounds (`#070A10`) with sky-blue accent (`#0EA5E9`)
-- SF Pro Black for the wordmark, rounded typography throughout
-- Ambient glow orbs in the background
-- Spring animations and haptic feedback throughout
-- Emoji-first category pills — no label clutter
+- Warm near-black ground (`#0D0A08`) lit faintly from below, ember accent (`#FF9F45`)
+- Serif (New York) for everything you write — chrome stays sans; your thoughts read like set type
+- Dusty ink category colors and margin-note tags instead of neon badges
+- Liquid Glass chrome (header, capture bar, chips) on iOS 26 materials
+- Spring choreography and haptics throughout; sparks fly when you finish something
 
 ---
 
 ## Tech Stack
 
-- **SwiftUI** — Declarative UI with `@Observable`
+- **SwiftUI** — Declarative UI with `@Observable`, Liquid Glass materials
+- **FoundationModels** — On-device LLM with `@Generable` structured output; private by construction
 - **NSUbiquitousKeyValueStore** — iCloud sync
 - **iOS 26+** — Modern APIs, MainActor isolation
 - **Swift 6** — Strict concurrency
@@ -84,8 +94,9 @@ Dashpad/
 ├── BackburnerView.swift  # 4-week backburner sheet
 ├── ArchivedView.swift    # Archive history
 ├── DashItem.swift        # Data model
-├── DashStore.swift       # State management + iCloud sync
-├── DateParser.swift      # Natural language date parsing
+├── DashStore.swift       # State management + iCloud sync + enrichment
+├── Intelligence.swift    # On-device Foundation Models engine
+├── DateParser.swift      # Natural language date parsing (regex + data detector)
 ├── DesignSystem.swift    # Colors, typography, spacing tokens
 ├── SplashView.swift      # Flame launch animation
 └── Assets.xcassets/      # App icons & colors
@@ -105,10 +116,12 @@ Dashpad/
 
 ## Roadmap
 
-- [ ] Quick Capture widget
+- [ ] Quick Capture widget + Control Center control
 - [ ] Daily digest notification
 - [ ] Voice input
-- [ ] Siri / Shortcuts integration
+- [x] Siri / Shortcuts integration (with on-device smart filing)
+- [ ] Semantic search — find "fish" when you typed "salmon"
+- [ ] "Sound familiar?" — on-device near-duplicate detection at capture time
 
 ---
 
