@@ -108,12 +108,17 @@ struct ContentView: View {
         )
     }
 
-    // The main feed shows every recent capture, tagged or not. Filing is
-    // something you watch happen on the card — not a disappearing act.
-    // Groups (via the pills) stay the tidy view; this is the living pad.
+    // Fresh captures stay on the pad for a day — you see them land and
+    // watch the filing happen — then they graduate to their groups and
+    // the pad is clean again. Untagged ideas stay until filed; the pad
+    // is their only home.
     private var recentItems: [DashItem] {
         let upNextIDs = Set(upNextItems.map(\.id))
-        return regularItems.filter { !upNextIDs.contains($0.id) }
+        let freshCutoff = Date().addingTimeInterval(-24 * 3600)
+        return regularItems.filter {
+            !upNextIDs.contains($0.id)
+                && ($0.tags.isEmpty || $0.createdAt > freshCutoff)
+        }
     }
 
     private var isEmpty: Bool {
@@ -619,13 +624,21 @@ struct ContentView: View {
                 .glassEffect(.regular, in: .circle)
 
             VStack(spacing: Dash.Spacing.xs) {
-                Text(isSearching ? "No results" : msg.0)
+                // Everything filed ≠ nothing captured. Say which one it is.
+                let allFiled = !isSearching && !store.activeItems.isEmpty
+                Text(isSearching ? "No results" : allFiled ? "All filed away" : msg.0)
                     .font(.system(size: 19, weight: .medium, design: .serif))
                     .foregroundStyle(Dash.Colors.textPrimary)
-                if !isSearching && !msg.1.isEmpty {
-                    Text(msg.1)
-                        .font(.system(size: 14, design: .serif).italic())
-                        .foregroundStyle(Dash.Colors.textTertiary)
+                if !isSearching {
+                    if allFiled {
+                        Text("Every idea is in its place. Tap a category to browse.")
+                            .font(.system(size: 14, design: .serif).italic())
+                            .foregroundStyle(Dash.Colors.textTertiary)
+                    } else if !msg.1.isEmpty {
+                        Text(msg.1)
+                            .font(.system(size: 14, design: .serif).italic())
+                            .foregroundStyle(Dash.Colors.textTertiary)
+                    }
                 }
             }
         }
