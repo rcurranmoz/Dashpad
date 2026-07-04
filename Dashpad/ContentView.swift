@@ -113,24 +113,11 @@ struct ContentView: View {
         return regularItems.filter { $0.tags.isEmpty && !upNextIDs.contains($0.id) }
     }
 
-    // When the inbox is quiet, one aging idea gets a moment back in the
-    // light. Rotates daily; revive it or let it go — no guilt either way.
-    private var pileCandidate: DashItem? {
-        guard soloItems.count < 3, !isSearching else { return nil }
-        let cutoff = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
-        let candidates = store.activeItems
-            .filter { !$0.isPinned && $0.dueDate == nil && $0.createdAt < cutoff }
-            .sorted { $0.createdAt < $1.createdAt }
-        guard !candidates.isEmpty else { return nil }
-        let day = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 0
-        return candidates[day % candidates.count]
-    }
 
     private var isEmpty: Bool {
         isSearching
             ? filteredRegular.isEmpty && filteredPinned.isEmpty
-            : soloItems.isEmpty && filteredPinned.isEmpty
-                && upNextItems.isEmpty && pileCandidate == nil
+            : soloItems.isEmpty && filteredPinned.isEmpty && upNextItems.isEmpty
     }
 
     // MARK: - Body
@@ -415,14 +402,6 @@ struct ContentView: View {
                 }
             }
 
-            // Remember this? — one aging idea, back in the light for a day
-            if let pick = pileCandidate {
-                Section {
-                    rememberRow(pick)
-                } header: {
-                    sectionHeader(icon: "moon.stars.fill", title: "REMEMBER THIS?", color: Dash.Colors.textTertiary)
-                }
-            }
         }
         .listStyle(.plain)
         .onAppear {
@@ -523,64 +502,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Remember This Row
-
-    private func rememberRow(_ item: DashItem) -> some View {
-        let days = Calendar.current.dateComponents([.day], from: item.createdAt, to: Date()).day ?? 0
-        return VStack(alignment: .leading, spacing: Dash.Spacing.sm) {
-            Text(item.title)
-                .font(Dash.Typography.idea)
-                .foregroundStyle(Dash.Colors.textSecondary)
-                .lineLimit(2)
-
-            HStack {
-                Text(days >= 21 ? "captured \(days / 7) weeks ago" : "captured \(days) days ago")
-                    .font(.system(size: 12, design: .serif).italic())
-                    .foregroundStyle(Dash.Colors.textTertiary)
-
-                Spacer()
-
-                Button {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) { store.revive(item) }
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                } label: {
-                    Text("Revive")
-                        .font(Dash.Typography.caption.weight(.semibold))
-                        .foregroundStyle(Dash.Colors.accentBright)
-                        .padding(.horizontal, Dash.Spacing.md)
-                        .padding(.vertical, 6)
-                        .glassEffect(.regular.tint(Dash.Colors.accent.opacity(0.25)).interactive(), in: .capsule)
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    withAnimation { store.delete(item) }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                } label: {
-                    Text("Let go")
-                        .font(Dash.Typography.caption)
-                        .foregroundStyle(Dash.Colors.textTertiary)
-                        .padding(.horizontal, Dash.Spacing.md)
-                        .padding(.vertical, 6)
-                        .background(Capsule().strokeBorder(Dash.Colors.border, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(Dash.Spacing.lg)
-        .background(
-            RoundedRectangle(cornerRadius: Dash.Radius.md)
-                .fill(Dash.Colors.surface.opacity(0.5))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Dash.Radius.md)
-                        .strokeBorder(Dash.Colors.borderSubtle, style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
-                )
-        )
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 0, leading: Dash.Spacing.xl, bottom: Dash.Spacing.md, trailing: Dash.Spacing.xl))
-    }
-
     // Compact checklist row (used when a tag filter is active for list-style tags)
     private func compactRow(_ item: DashItem) -> some View {
         HStack(spacing: Dash.Spacing.md) {
@@ -654,17 +575,6 @@ struct ContentView: View {
             }
             .tint(Dash.Colors.warning)
         }
-    }
-
-    private func groupRow(_ group: IdeaGroup) -> some View {
-        let groupItems = regularItems.filter { $0.tags.contains(group.tag) }.sorted(by: sortMode)
-        return GroupCard(group: group, items: groupItems) {
-            selectedGroup = group
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 0, leading: Dash.Spacing.xl, bottom: Dash.Spacing.md, trailing: Dash.Spacing.xl))
     }
 
     // List mode: grocery/shopping → compact checklist; movies/games → still cards
