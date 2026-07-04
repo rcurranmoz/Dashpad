@@ -6,26 +6,37 @@ struct TagFilterPill: View {
     let label: String
     let color: Color
     let isSelected: Bool
+    var count: Int = 0
     let action: () -> Void
-
-    private var displayLabel: String {
-        if label == "All" { return "All" }
-        return TagPredictor.emoji(for: label)
-    }
 
     var body: some View {
         Button(action: action) {
-            Text(displayLabel)
-                .font(Dash.Typography.caption)
-                .foregroundStyle(isSelected ? .white : color)
-                .padding(.horizontal, Dash.Spacing.md)
-                .padding(.vertical, Dash.Spacing.sm)
-                .background(
-                    Capsule()
-                        .fill(isSelected ? color : Dash.Colors.surface)
-                        .overlay(Capsule().stroke(isSelected ? color : color.opacity(0.3), lineWidth: 1))
-                )
-                .shadow(color: isSelected ? color.opacity(0.4) : .clear, radius: 8, y: 2)
+            HStack(spacing: 6) {
+                Text(TagPredictor.emoji(for: label))
+                    .font(.system(size: 15))
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(isSelected ? Dash.Colors.textPrimary : color.opacity(0.9))
+                        .contentTransition(.numericText())
+                }
+            }
+            .padding(.horizontal, Dash.Spacing.md)
+            .padding(.vertical, Dash.Spacing.sm)
+            .background(
+                Capsule()
+                    .fill(isSelected ? color.opacity(0.28) : Dash.Colors.surface)
+                    .overlay(
+                        Capsule().strokeBorder(
+                            LinearGradient(
+                                colors: [Dash.Colors.edgeLight, color.opacity(isSelected ? 0.5 : 0.22)],
+                                startPoint: .top, endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                    )
+            )
+            .shadow(color: isSelected ? color.opacity(0.35) : .black.opacity(0.25), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
     }
@@ -35,6 +46,7 @@ struct TagFilterPill: View {
 
 struct TagSuggestionChip: View {
     let tag: String
+    var isSmart: Bool = false
     let action: () -> Void
 
     private var tagColor: Color { Color(hex: TagPredictor.color(for: tag)) }
@@ -42,7 +54,7 @@ struct TagSuggestionChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Dash.Spacing.xs) {
-                Image(systemName: "plus.circle.fill")
+                Image(systemName: isSmart ? "sparkles" : "plus.circle.fill")
                     .font(.system(size: 12))
                 Text("\(TagPredictor.emoji(for: tag)) \(TagPredictor.friendlyName(for: tag))")
                     .font(Dash.Typography.caption)
@@ -50,11 +62,7 @@ struct TagSuggestionChip: View {
             .foregroundStyle(tagColor)
             .padding(.horizontal, Dash.Spacing.md)
             .padding(.vertical, Dash.Spacing.sm)
-            .background(
-                Capsule()
-                    .fill(tagColor.opacity(0.15))
-                    .overlay(Capsule().stroke(tagColor.opacity(0.3), lineWidth: 1))
-            )
+            .glassEffect(.regular.tint(tagColor.opacity(0.2)).interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
     }

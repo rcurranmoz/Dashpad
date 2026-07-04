@@ -14,6 +14,7 @@ struct EditIdeaView: View {
     @State private var dueDate: Date = Date()
     @State private var showDeleteConfirmation = false
     @State private var customTagInput: String = ""
+    @State private var isSparking = false
     @FocusState private var isTitleFocused: Bool
     @FocusState private var isCustomTagFocused: Bool
 
@@ -32,6 +33,9 @@ struct EditIdeaView: View {
                     VStack(spacing: Dash.Spacing.xl) {
                         ideaField
                         notesField
+                        if DashIntelligence.isAvailable {
+                            sparkButton
+                        }
                         dueDateField
                         tagsField
                         Spacer(minLength: 40)
@@ -81,7 +85,7 @@ struct EditIdeaView: View {
     private var ideaField: some View {
         fieldSection(label: "IDEA") {
             TextField("What's the idea?", text: $titleText, axis: .vertical)
-                .font(Dash.Typography.body)
+                .font(Dash.Typography.idea)
                 .foregroundStyle(Dash.Colors.textPrimary)
                 .focused($isTitleFocused)
                 .lineLimit(1...5)
@@ -91,7 +95,7 @@ struct EditIdeaView: View {
     private var notesField: some View {
         fieldSection(label: "NOTES") {
             TextField("Add notes, links, context...", text: $noteText, axis: .vertical)
-                .font(Dash.Typography.body)
+                .font(.system(size: 15, weight: .regular, design: .serif))
                 .foregroundStyle(Dash.Colors.textPrimary)
                 .lineLimit(3...12)
         }
@@ -215,6 +219,46 @@ struct EditIdeaView: View {
             )
             .padding(.top, Dash.Spacing.sm)
         }
+    }
+
+    // MARK: - Spark
+
+    /// On-device model turns the idea into concrete next steps,
+    /// appended to the notes. Nothing leaves the device.
+    private var sparkButton: some View {
+        Button { Task { await runSpark() } } label: {
+            HStack(spacing: Dash.Spacing.sm) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 14, weight: .semibold))
+                    .symbolEffect(.pulse, options: .repeating, isActive: isSparking)
+                Text(isSparking ? "Sparking…" : "Spark next steps")
+                    .font(Dash.Typography.caption.weight(.semibold))
+            }
+            .foregroundStyle(Dash.Colors.accentBright)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Dash.Spacing.md)
+            .glassEffect(.regular.tint(Dash.Colors.accent.opacity(0.25)).interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .disabled(isSparking || titleText.trimmingCharacters(in: .whitespaces).isEmpty)
+        .opacity(isSparking ? 0.7 : 1)
+    }
+
+    private func runSpark() async {
+        isSparking = true
+        defer { isSparking = false }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        let trimmedNote = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let steps = await DashIntelligence.spark(
+            title: titleText,
+            body: trimmedNote.isEmpty ? nil : trimmedNote
+        ) else { return }
+
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+            noteText = trimmedNote.isEmpty ? steps : trimmedNote + "\n\n" + steps
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     private var deleteButton: some View {
