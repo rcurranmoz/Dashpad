@@ -68,20 +68,29 @@ struct QuickAddDashItemIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let store = DashStore.shared
-        
+
         // Parse for date information
-        let (parsedDate, cleanedTitle) = DateParser.parse(text)
+        var (parsedDate, cleanedTitle) = DateParser.parse(text)
         let finalTitle = cleanedTitle.isEmpty ? text : cleanedTitle
-        
-        // Suggest tags based on the title
+
+        // File it with the on-device model when available;
+        // fall back to keyword suggestions otherwise.
         let allTags = Array(Set(store.incompleteItems.flatMap { $0.tags })).sorted()
-        let suggestedTags = TagPredictor.suggestTags(for: finalTitle, existingUserTags: allTags)
-        
-        // Create item with suggested tags
-        let item = DashItem(title: finalTitle, dueDate: parsedDate, tags: Array(suggestedTags.prefix(2)))
+        var tags: [String] = []
+        if let smart = await DashIntelligence.analyze(finalTitle, knownTags: allTags) {
+            tags = smart.tags
+            if parsedDate == nil { parsedDate = smart.dueDate }
+        } else {
+            tags = Array(TagPredictor.suggestTags(for: finalTitle, existingUserTags: allTags).prefix(2))
+        }
+
+        let item = DashItem(title: finalTitle, dueDate: parsedDate, tags: tags)
         store.add(item)
-        
-        return .result(dialog: IntentDialog(stringLiteral: "Added to Dashpad"))
+
+        let message = tags.isEmpty
+            ? "Added to Dashpad"
+            : "Added to Dashpad → \(TagPredictor.friendlyName(for: tags[0]))"
+        return .result(dialog: IntentDialog(stringLiteral: message))
     }
 }
 
